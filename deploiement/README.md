@@ -11,7 +11,7 @@ L'image déployée est celle publiée par Jenkins sur Docker Hub (`iamkrugs/souv
 | 4.3 Ansible : préparation du serveur | ✅ |
 | 5.2 Docker Compose : API + PostgreSQL + exposition HTTPS via Caddy | ✅ déployé sur https://api.tanguydavid.fr |
 | 4.4 / 5.3 Pipeline GitLab CI/CD | ✅ premier déploiement réussi (pipeline 3045841142) |
-| Procédures de déploiement et de rollback | ⏳ |
+| Procédures de déploiement et de rollback | ✅ [`procedure-deploiement.md`](../documentation/procedure-deploiement.md) · [`procedure-rollback.md`](../documentation/procedure-rollback.md) |
 
 ---
 

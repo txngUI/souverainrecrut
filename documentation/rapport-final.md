@@ -367,7 +367,16 @@ Les secrets applicatifs **restent uniquement sur le serveur** : la pipeline ne m
 | Régression détectée après déploiement | Relancer la pipeline avec le tag précédent, ou **Re-deploy** sur l'ancien déploiement dans *Environments → production* |
 | Migration de base incompatible | Restaurer la sauvegarde `backups/db-…-avant-<tag>.sql.gz` prise automatiquement avant le déploiement, puis redéployer l'ancien tag |
 
-Procédure détaillée : `documentation/procedure-rollback.md`.
+Procédure détaillée et **testée** (restauration de la base vérifiée sur une copie locale) : [`procedure-rollback.md`](procedure-rollback.md).
+
+### 11.8 Documentation de référence
+
+| Document | Contenu |
+|---|---|
+| [`architecture.md`](architecture.md) | Vue d'ensemble, composants, flux du commit au déploiement, réseau, secrets, choix techniques |
+| [`procedure-deploiement.md`](procedure-deploiement.md) | Mise en place initiale, déploiement courant, vérifications, déploiement de secours, dépannage |
+| [`procedure-rollback.md`](procedure-rollback.md) | Retour automatique, redéploiement d'un tag, restauration de la base, configuration du serveur |
+| [`gestion-des-secrets.md`](gestion-des-secrets.md) | Inventaire, création, rotation, incident traité |
 
 ---
 
