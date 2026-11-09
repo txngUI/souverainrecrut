@@ -10,7 +10,7 @@ Le code testé se trouve dans `backend/`. Ce dossier contient la documentation, 
 | Lint (ESLint) + formatage (Prettier) | ✅ |
 | Lab local : SonarQube + Jenkins (Docker Compose, `lab/`) | ✅ |
 | 3.3 Analyse SonarQube + Quality Gate | ✅ |
-| VM Ubuntu Server (VMware) — cible de déploiement, jour 2 | ⏳ |
+| Déploiement (VPS Ubuntu, jour 2) : voir [`deploiement/`](../deploiement/README.md) | ⏳ |
 | 3.4 / 3.5 Jenkins + Jenkinsfile | ✅ |
 | 3.6 Image Docker, Trivy, Docker Hub | ✅ |
 
@@ -99,7 +99,7 @@ Correction faite à cette occasion : `src/middlewares/auth.middleware.ts` utilis
 
 ## 4. Lab local (Jenkins + SonarQube)
 
-Le lab tourne en local avec Docker Compose (`lab/docker-compose.yml`). La VM Ubuntu sous VMware est réservée au déploiement (jour 2).
+Le lab tourne en local avec Docker Compose (`lab/docker-compose.yml`). Le VPS Ubuntu de production est réservé au déploiement (jour 2).
 
 | Service | Image | Accès |
 |---|---|---|

@@ -1,0 +1,6 @@
+# Géré par Ansible (deploiement/ansible) — API SouverainRecrut
+# Certificat TLS obtenu automatiquement par Caddy (Let's Encrypt)
+{{ api_domain }} {
+	encode zstd gzip
+	reverse_proxy {{ api_container }}:{{ api_port }}
+}

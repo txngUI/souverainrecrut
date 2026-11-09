@@ -35,22 +35,32 @@ Statut : ⏳ = à créer · ✅ = créé et stocké
 
 | Secret | Utilisé par | Stocké dans | Variable | Statut |
 |---|---|---|---|---|
-| Clé de signature JWT | API (signature/vérification des tokens) | `.env` sur le serveur de déploiement | `JWT_SECRET` | ⏳ |
-| Chaîne de connexion PostgreSQL (contient le mot de passe) | API + Prisma (migrations) | `.env` sur le serveur de déploiement | `DATABASE_URL` | ⏳ |
-| Mot de passe PostgreSQL applicatif | Conteneur `postgres` | `.env` sur le serveur de déploiement | `POSTGRES_PASSWORD` | ⏳ |
+| Clé de signature JWT | API (signature/vérification des tokens) | `/opt/souverainrecrut/.env` sur le serveur (droits 600, non versionné) | `JWT_SECRET` | ⏳ |
+| Chaîne de connexion PostgreSQL (contient le mot de passe) | API + Prisma (migrations) | Construite par `docker-compose.yml` à partir de `POSTGRES_PASSWORD` | `DATABASE_URL` | ⏳ |
+| Mot de passe PostgreSQL applicatif | Conteneurs `db`, `migrate`, `api` | `/opt/souverainrecrut/.env` sur le serveur (droits 600, non versionné) | `POSTGRES_PASSWORD` | ⏳ |
+| Clé SSH de déploiement | GitLab CI → compte `souverainrecrut` | Privée : poste de l'administrateur puis variable GitLab ; publique : `authorized_keys` (posée par Ansible) | `~/.ssh/souverainrecrut_deploy` | ✅ générée |
 
 > Pour les tests automatisés, un `JWT_SECRET` **factice** (`test-secret`) est défini dans `backend/tests/setup-env.ts`. Il ne sert qu'aux tests et n'est utilisé dans aucun environnement réel.
 
-### 2.3 Déploiement (GitLab CI, jour 2)
+### 2.3 Provisionnement (Terraform, jour 2)
+
+| Secret | Utilisé par | Stocké dans | Variable | Statut |
+|---|---|---|---|---|
+| Token API Hostinger (gestion DNS de `tanguydavid.fr`) | `terraform plan` / `apply` (enregistrements `api`) | Saisi à la demande dans le shell, jamais écrit sur disque | `HOSTINGER_API_TOKEN` | ✅ (expiration courte, à révoquer en fin de projet) |
+| État Terraform (`terraform.tfstate`) | Terraform | Local, ignoré par Git (`deploiement/terraform/.gitignore`) | — | — |
+
+### 2.4 Déploiement (GitLab CI, jour 2)
 
 | Secret | Utilisé par | Stocké dans | Variable GitLab | Options | Statut |
 |---|---|---|---|---|---|
-| Utilisateur Docker Hub | Pipeline GitLab (`docker login` sur le serveur) | Variables CI/CD GitLab | `DOCKERHUB_USER` | — | ⏳ |
-| Token Docker Hub (lecture seule) | Pipeline GitLab (`docker pull`) | Variables CI/CD GitLab | `DOCKERHUB_TOKEN` | Masked, Protected | ⏳ |
-| Clé privée SSH de déploiement | Pipeline GitLab → serveur | Variables CI/CD GitLab | `SSH_PRIVATE_KEY` | Type *File*, Protected | ⏳ |
-| Adresse du serveur | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_HOST` | — (pas un secret, mais centralisé) | ⏳ |
-| Utilisateur SSH | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_USER` | — | ⏳ |
-| Variables applicatives (§2.2) | Fichier `.env` généré sur le serveur | Variables CI/CD GitLab | `JWT_SECRET`, `POSTGRES_PASSWORD`… | Masked, Protected | ⏳ |
+| Clé privée SSH de déploiement | Pipeline GitLab → compte `souverainrecrut` | Variables CI/CD GitLab | `SSH_PRIVATE_KEY` | Type *File*, Protected | ⏳ |
+| Empreinte SSH du serveur | Vérification stricte de l'hôte (anti-usurpation) | Variables CI/CD GitLab | `SSH_KNOWN_HOSTS` | Protected (non secret) | ⏳ |
+| Adresse du serveur | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_HOST` | Protected (non secret) | ⏳ |
+| Utilisateur SSH | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_USER` | Protected (non secret) | ⏳ |
+| Utilisateur Docker Hub | Pipeline GitLab (`docker login` sur le serveur) | Variables CI/CD GitLab | `DOCKERHUB_USER` | Protected — optionnel : l'image est publique | ⏳ |
+| Token Docker Hub (lecture seule) | Pipeline GitLab (`docker pull`) | Variables CI/CD GitLab | `DOCKERHUB_TOKEN` | Masked, Protected — optionnel ; `docker logout` systématique après le job | ⏳ |
+
+> **Secrets applicatifs** (`JWT_SECRET`, `POSTGRES_PASSWORD`) : ils ne sont **pas** copiés dans GitLab. Ils sont générés une seule fois sur le serveur (`openssl rand`), restent dans `/opt/souverainrecrut/.env` (droits 600), et la pipeline ne modifie que `BACKEND_TAG`. Un secret qui n'est pas dupliqué ne peut pas fuiter par la CI. Cela évite aussi un écart de mot de passe avec la base déjà initialisée.
 
 ## 3. Création des secrets
 

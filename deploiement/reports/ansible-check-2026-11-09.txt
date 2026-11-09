@@ -1,0 +1,96 @@
+
+PLAY [Préparer le serveur pour le déploiement de l'API SouverainRecrut] ********
+
+TASK [Gathering Facts] *********************************************************
+ok: [vps-tanguy]
+
+TASK [Mettre à jour l'index des paquets] ***************************************
+changed: [vps-tanguy]
+
+TASK [Installer les dépendances système] ***************************************
+The following packages were automatically installed and are no longer required:
+  libfwupd2 libgusb2
+Use 'apt autoremove' to remove them.
+The following NEW packages will be installed:
+  acl
+0 upgraded, 1 newly installed, 0 to remove and 47 not upgraded.
+changed: [vps-tanguy]
+
+TASK [Activer les mises à jour de sécurité automatiques] ***********************
+ok: [vps-tanguy]
+
+TASK [Détecter Docker Engine et le plugin Compose] *****************************
+ok: [vps-tanguy]
+
+TASK [Ajouter le dépôt officiel Docker (clé de signature incluse)] *************
+skipping: [vps-tanguy]
+
+TASK [Installer les paquets Docker] ********************************************
+skipping: [vps-tanguy]
+
+TASK [Activer et démarrer le service Docker (sans redémarrage)] ****************
+ok: [vps-tanguy]
+
+TASK [Créer l'utilisateur de déploiement (groupe docker, sans sudo)] ***********
+changed: [vps-tanguy]
+
+TASK [Autoriser la clé SSH de déploiement] *************************************
+--- before: /home/souverainrecrut/.ssh/authorized_keys
++++ after: /home/souverainrecrut/.ssh/authorized_keys
+@@ -0,0 +1 @@
++ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMcdgBPdmXtTSYkKG1id+bL/2iVSNeOOYEzvw4t0NTOc deploy-souverainrecrut
+
+changed: [vps-tanguy]
+
+TASK [Créer le répertoire de déploiement] **************************************
+[WARNING]: failed to look up user souverainrecrut. Create user up to this point in real play
+[WARNING]: failed to look up group souverainrecrut. Create group up to this point in real play
+--- before
++++ after
+@@ -1,4 +1,4 @@
+ {
+     "path": "/opt/souverainrecrut",
+-    "state": "absent"
++    "state": "directory"
+ }
+
+changed: [vps-tanguy]
+
+TASK [Vérifier que le réseau Docker du reverse proxy existe] *******************
+ok: [vps-tanguy]
+
+TASK [Déposer la configuration Caddy de l'API] *********************************
+--- before
++++ after: /home/tanguy/.ansible/tmp/ansible-local-3421364hgee5e/tmpyp1eief7/souverainrecrut.caddy.j2
+@@ -0,0 +1,6 @@
++# Géré par Ansible (deploiement/ansible) — API SouverainRecrut
++# Certificat TLS obtenu automatiquement par Caddy (Let's Encrypt)
++api.tanguydavid.fr {
++	encode zstd gzip
++	reverse_proxy souverainrecrut-api:4000
++}
+
+changed: [vps-tanguy]
+
+TASK [Valider la configuration complète de Caddy] ******************************
+skipping: [vps-tanguy]
+
+TASK [Recharger Caddy à chaud (sans coupure des autres sites)] *****************
+skipping: [vps-tanguy]
+
+TASK [Vérifier que l'utilisateur de déploiement peut piloter Docker] ***********
+skipping: [vps-tanguy]
+
+TASK [Afficher l'état final] ***************************************************
+ok: [vps-tanguy] => {
+    "msg": [
+        "Docker Compose : Docker Compose version v5.5.0",
+        "Utilisateur souverainrecrut : accès Docker OK",
+        "Répertoire : /opt/souverainrecrut",
+        "Site Caddy : https://api.tanguydavid.fr -> souverainrecrut-api:4000"
+    ]
+}
+
+PLAY RECAP *********************************************************************
+vps-tanguy                 : ok=12   changed=6    unreachable=0    failed=0    skipped=5    rescued=0    ignored=0   
+

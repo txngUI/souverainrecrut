@@ -1,0 +1,17 @@
+# Utilisateur dédié à ce projet, utilisé par GitLab CI pour déployer
+# (pas de sudo, groupe docker). Distinct du compte `deploy` déjà présent
+# sur le serveur pour un autre projet : révocation et traçabilité indépendantes.
+deploy_user: souverainrecrut
+deploy_pubkey_file: "~/.ssh/souverainrecrut_deploy.pub"
+
+# Répertoire du projet Compose de l'API
+deploy_dir: /opt/souverainrecrut
+
+# Reverse proxy Caddy déjà en place sur le serveur
+caddy_container: caddy-caddy-1
+caddy_sites_dir: /root/caddy/sites
+caddy_network: web
+api_domain: api.tanguydavid.fr
+api_container: souverainrecrut-api
+api_port: 4000
+

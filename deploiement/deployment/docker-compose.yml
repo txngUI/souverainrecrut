@@ -1,0 +1,90 @@
+# ==========================================================================
+# Déploiement de production — API SouverainRecrut + PostgreSQL
+#
+# L'image est celle publiée par Jenkins sur Docker Hub : elle n'est jamais
+# reconstruite ici. Le tag déployé est fixé par BACKEND_TAG dans .env.
+#
+#   docker compose pull && docker compose up -d && docker compose ps
+#
+# Aucun port n'est publié : l'API est jointe par le reverse proxy Caddy
+# (réseau externe "web"), PostgreSQL reste sur un réseau interne.
+# ==========================================================================
+
+name: souverainrecrut
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-souverainrecrut}
+      POSTGRES_USER: ${POSTGRES_USER:-souverainrecrut}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *logging
+
+  # Migrations Prisma : conteneur ponctuel exécuté avant chaque démarrage de l'API.
+  # "migrate deploy" applique uniquement les migrations versionnées dans l'image,
+  # sans jamais générer de migration ni réinitialiser la base.
+  migrate:
+    image: ${BACKEND_IMAGE:-iamkrugs/souverainrecrut-backend}:${BACKEND_TAG:?BACKEND_TAG manquant dans .env}
+    command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-souverainrecrut}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-souverainrecrut}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend
+    logging: *logging
+
+  api:
+    image: ${BACKEND_IMAGE:-iamkrugs/souverainrecrut-backend}:${BACKEND_TAG}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      API_VERSION: v1
+      DATABASE_URL: postgresql://${POSTGRES_USER:-souverainrecrut}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-souverainrecrut}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET manquant dans .env}
+      FRONTEND_URL: ${FRONTEND_URL:-https://tanguydavid.fr}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      backend:
+      web:
+        # Nom sous lequel Caddy joint l'API (reverse_proxy souverainrecrut-api:4000)
+        aliases:
+          - souverainrecrut-api
+    # Le healthcheck est défini dans l'image (GET /v1/health)
+    logging: *logging
+
+networks:
+  # Réseau privé API <-> PostgreSQL, sans accès Internet
+  backend:
+    internal: true
+  # Réseau du reverse proxy Caddy, déjà présent sur le serveur
+  web:
+    external: true
+
+volumes:
+  # Données PostgreSQL persistantes (conservées lors des mises à jour et rollbacks)
+  db_data:

@@ -1,0 +1,10 @@
+# Répertoire de travail et état Terraform : jamais versionnés
+# (l'état peut contenir des données sensibles)
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+# Plan enregistré (binaire, peut contenir des valeurs sensibles)
+tfplan

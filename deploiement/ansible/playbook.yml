@@ -1,0 +1,165 @@
+# ==========================================================================
+# Préparation du serveur de production — SouverainRecrut
+#
+#   ansible-playbook playbook.yml --check --diff   # simulation, rien n'est modifié
+#   ansible-playbook playbook.yml --diff           # application
+#
+# Le serveur héberge déjà d'autres services (sites derrière Caddy, Minecraft).
+# Toutes les tâches sont additives et idempotentes :
+#   - pas de mise à jour complète du système (apt upgrade) ni de redémarrage ;
+#   - Docker n'est installé que s'il est absent, et le service n'est jamais redémarré ;
+#   - aucune configuration existante n'est modifiée (sshd, root, Caddyfile).
+# ==========================================================================
+
+- name: Préparer le serveur pour le déploiement de l'API SouverainRecrut
+  hosts: production
+  become: false
+
+  tasks:
+    # ---------------------------------------------------------------- Système
+    - name: Mettre à jour l'index des paquets
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Installer les dépendances système
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - unattended-upgrades
+          - acl
+        state: present
+
+    # Mises à jour de sécurité automatiques, sans redémarrage automatique :
+    # le serveur reste à jour sans interrompre les services hébergés.
+    - name: Activer les mises à jour de sécurité automatiques
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        mode: "0644"
+
+    # ---------------------------------------------------------------- Docker
+    - name: Détecter Docker Engine et le plugin Compose
+      ansible.builtin.command: docker compose version
+      register: docker_compose_check
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Installer Docker Engine et Compose (uniquement s'ils sont absents)
+      when: docker_compose_check.rc != 0
+      block:
+        - name: Ajouter le dépôt officiel Docker (clé de signature incluse)
+          ansible.builtin.deb822_repository:
+            name: docker
+            types: deb
+            uris: https://download.docker.com/linux/ubuntu
+            suites: "{{ ansible_facts['distribution_release'] }}"
+            components: stable
+            architectures: amd64
+            signed_by: https://download.docker.com/linux/ubuntu/gpg
+
+        - name: Installer les paquets Docker
+          ansible.builtin.apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-buildx-plugin
+              - docker-compose-plugin
+            state: present
+            update_cache: true
+
+    # state: started ne redémarre pas un service déjà actif
+    - name: Activer et démarrer le service Docker (sans redémarrage)
+      ansible.builtin.systemd_service:
+        name: docker
+        enabled: true
+        state: started
+
+    # ------------------------------------------------- Utilisateur de déploiement
+    - name: Créer l'utilisateur de déploiement (groupe docker, sans sudo)
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        groups: docker
+        append: true
+        shell: /bin/bash
+        create_home: true
+        password_lock: true
+
+    - name: Autoriser la clé SSH de déploiement
+      ansible.posix.authorized_key:
+        user: "{{ deploy_user }}"
+        key: "{{ lookup('ansible.builtin.file', deploy_pubkey_file) }}"
+        # Chemin explicite : permet la simulation (--check) avant création de l'utilisateur
+        path: "/home/{{ deploy_user }}/.ssh/authorized_keys"
+        state: present
+
+    - name: Créer le répertoire de déploiement
+      ansible.builtin.file:
+        path: "{{ deploy_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0750"
+
+    # ------------------------------------------------------- Reverse proxy Caddy
+    - name: Vérifier que le réseau Docker du reverse proxy existe
+      ansible.builtin.command: docker network inspect {{ caddy_network }}
+      changed_when: false
+      check_mode: false
+
+    - name: Exposer l'API via Caddy (fichier de site dédié)
+      block:
+        - name: Déposer la configuration Caddy de l'API
+          ansible.builtin.template:
+            src: souverainrecrut.caddy.j2
+            dest: "{{ caddy_sites_dir }}/souverainrecrut.caddy"
+            mode: "0644"
+          register: caddy_site
+
+        - name: Valider la configuration complète de Caddy
+          ansible.builtin.command: >-
+            docker exec {{ caddy_container }} caddy validate --config /etc/caddy/Caddyfile
+          when: caddy_site.changed and not ansible_check_mode
+          changed_when: false
+
+        - name: Recharger Caddy à chaud (sans coupure des autres sites)
+          ansible.builtin.command: >-
+            docker exec {{ caddy_container }} caddy reload --config /etc/caddy/Caddyfile
+          when: caddy_site.changed and not ansible_check_mode
+          changed_when: true
+
+      rescue:
+        # Une configuration invalide ne doit jamais rester en place :
+        # au prochain redémarrage de Caddy, elle couperait tous les sites.
+        - name: Retirer la configuration Caddy invalide
+          ansible.builtin.file:
+            path: "{{ caddy_sites_dir }}/souverainrecrut.caddy"
+            state: absent
+
+        - name: Interrompre le playbook
+          ansible.builtin.fail:
+            msg: "Configuration Caddy invalide : fichier retiré, les autres sites ne sont pas impactés."
+
+    # ------------------------------------------------------------ Vérifications
+    - name: Vérifier que l'utilisateur de déploiement peut piloter Docker
+      ansible.builtin.command: docker ps --format '{{ "{{" }}.Names{{ "}}" }}'
+      become: true
+      become_user: "{{ deploy_user }}"
+      register: deploy_docker_ps
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+
+    - name: Afficher l'état final
+      ansible.builtin.debug:
+        msg:
+          - "Docker Compose : {{ docker_compose_check.stdout | default('installé par ce playbook') }}"
+          - "Utilisateur {{ deploy_user }} : accès Docker OK"
+          - "Répertoire : {{ deploy_dir }}"
+          - "Site Caddy : https://{{ api_domain }} -> {{ api_container }}:{{ api_port }}"

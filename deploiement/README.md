@@ -1,0 +1,192 @@
+# Déploiement — Backend SouverainRecrut
+
+Ce dossier regroupe les livrables de la partie **Provisionnement et déploiement** (cahier des charges §4 et §5).
+L'image déployée est celle publiée par Jenkins sur Docker Hub (`iamkrugs/souverainrecrut-backend:<version>-<sha7>`). Elle n'est jamais reconstruite ici.
+
+| Étape | Statut |
+|---|---|
+| Serveur cible : VPS Ubuntu 24.04 + sauvegarde de configuration avant modification | ✅ |
+| 4.2 Terraform : DNS `api.tanguydavid.fr` | ✅ |
+| Clé SSH de déploiement + utilisateur dédié `souverainrecrut` | ✅ |
+| 4.3 Ansible : préparation du serveur | ✅ |
+| 5.2 Docker Compose : API + PostgreSQL + exposition HTTPS via Caddy | ✅ déployé sur https://api.tanguydavid.fr |
+| 4.4 / 5.3 Pipeline GitLab CI/CD | ✅ écrite et testée localement · ⏳ projet GitLab |
+| Procédures de déploiement et de rollback | ⏳ |
+
+---
+
+## 1. Serveur cible
+
+**Choix :** un VPS (PulseHeberg, Ubuntu 24.04, 4 vCPU, 8 Go, IPv4 + IPv6 publiques) à la place d'une VM VMware locale.
+
+| Critère | VM VMware (NAT) | VPS retenu |
+|---|---|---|
+| Joignable par les runners GitLab.com | Non (NAT local) | Oui (IP publique) |
+| Représentativité d'une production | Faible | Réelle : exposition Internet, DNS, TLS |
+| Point de restauration (§4.1) | Snapshot VMware | Instantanés non inclus dans l'offre : sauvegarde ciblée + modifications uniquement additives + Ansible en mode `--check` (voir §1.1) |
+
+**Contrainte :** le serveur héberge déjà d'autres services (sites web derrière Caddy, serveur Minecraft, tous en conteneurs Docker). Le déploiement est conçu pour **ne rien modifier de l'existant** :
+
+| Existant | Mesure |
+|---|---|
+| Reverse proxy Caddy (ports 80/443) | Ajout d'un fichier dédié `/root/caddy/sites/souverainrecrut.caddy` (le `Caddyfile` importe `sites/*.caddy`) ; rechargement à chaud, sans coupure |
+| Autres conteneurs (Minecraft, sites) | Projet Compose isolé dans `/opt/souverainrecrut` ; le service Docker n'est jamais redémarré |
+| Ports publics | L'API et PostgreSQL n'exposent **aucun** port : l'API est jointe par Caddy via le réseau Docker `web` |
+| Accès SSH | Ajout d'un utilisateur dédié `souverainrecrut` (un compte `deploy` existe déjà pour un autre projet et n'est pas modifié) ; configuration `sshd` et compte root inchangés |
+| DNS de la zone | Terraform n'ajoute que ses propres enregistrements (`overwrite = false`) |
+
+### 1.1 Point de restauration sans snapshot
+
+L'offre du VPS n'inclut pas d'instantanés. La sécurité repose donc sur trois mesures :
+
+1. **Sauvegarde ciblée avant toute modification**, conservée sur le serveur (accès root uniquement) : configuration Caddy, clés SSH, configuration `sshd`, comptes système.
+2. **Modifications uniquement additives**, chacune réversible par une commande : ajout de l'utilisateur `deploy`, d'une clé dans `authorized_keys`, du dossier `/opt/souverainrecrut` et d'un fichier Caddy. Rien d'existant n'est modifié ou supprimé.
+3. **Simulation préalable :** le playbook Ansible est d'abord exécuté en mode `--check --diff`, qui affiche les changements sans les appliquer.
+
+```bash
+# Sauvegarde (sur le VPS, en root)
+tar czf /root/backup-avant-souverainrecrut-$(date +%F).tar.gz \
+  /root/caddy /root/.ssh /etc/ssh /etc/passwd /etc/group /etc/shadow /etc/sudoers.d
+chmod 600 /root/backup-avant-souverainrecrut-*.tar.gz
+```
+
+## 2. Terraform — DNS de l'API (§4.2)
+
+**Pourquoi le DNS :** PulseHeberg ne propose pas de provider Terraform, donc le VPS est créé manuellement (cas prévu au §4.2 : « Terraform peut être utilisé sur les ressources réellement disponibles »). La zone DNS `tanguydavid.fr` est hébergée chez **Hostinger**, qui publie un provider officiel (`hostinger/hostinger`). Terraform décrit donc l'entrée DNS qui rend l'API joignable.
+
+| Fichier | Contenu |
+|---|---|
+| `terraform/providers.tf` | Provider `hostinger/hostinger ~> 0.1` ; token lu dans `HOSTINGER_API_TOKEN` |
+| `terraform/variables.tf` | Zone, sous-domaine, IPv4/IPv6 du serveur, TTL |
+| `terraform/main.tf` | Enregistrements `A` et `AAAA` pour `api.tanguydavid.fr`, avec `overwrite = false` |
+| `terraform/outputs.tf` | Nom de domaine, URL de santé de l'API, valeurs DNS |
+| `terraform/.terraform.lock.hcl` | Version exacte du provider, versionnée pour la reproductibilité |
+| `terraform/.gitignore` | Exclut `.terraform/` et `*.tfstate` (l'état peut contenir des données sensibles) |
+
+**Vérifications préalables** (DNS public, en lecture seule) : aucun enregistrement `api.tanguydavid.fr` existant, pas de wildcard, serveurs DNS Hostinger (`dns-parking.com`).
+
+**Commandes**, depuis `deploiement/terraform/` :
+
+```bash
+# Token saisi sans affichage ni historique, jamais écrit sur disque
+read -rsp "Token Hostinger : " HOSTINGER_API_TOKEN && export HOSTINGER_API_TOKEN
+
+terraform init                # télécharge le provider, crée .terraform.lock.hcl
+terraform validate            # vérifie la syntaxe
+terraform plan -out=tfplan    # affiche et enregistre les changements prévus
+terraform apply tfplan        # applique exactement le plan relu
+terraform output              # affiche le domaine et l'URL de l'API
+```
+
+**Résultat du plan :** `Plan: 2 to add, 0 to change, 0 to destroy`, soit les enregistrements `api` A (`45.155.170.40`) et AAAA (`2a09:6382:4000:2:45:155:170:40`). Aucun autre enregistrement de la zone n'est concerné.
+
+**Résultat de l'application :** `Apply complete! Resources: 2 added, 0 changed, 0 destroyed.`
+
+**Vérification après application :**
+
+```bash
+dig +short api.tanguydavid.fr A
+dig +short api.tanguydavid.fr AAAA
+# → 45.155.170.40
+# → 2a09:6382:4000:2:45:155:170:40
+```
+
+**Retour arrière :** `terraform destroy` supprime uniquement les deux enregistrements créés par Terraform.
+
+## 3. Accès SSH
+
+| Clé | Utilisée par | Compte | Droits |
+|---|---|---|---|
+| Clé personnelle de l'administrateur (`~/.ssh/id_ed25519`) | Ansible, depuis le poste d'administration | `root` | Administration ; ajoutée à `authorized_keys` par `ssh-copy-id`, le mot de passe root reste inchangé |
+| Clé de déploiement (`~/.ssh/souverainrecrut_deploy`, ed25519, sans passphrase) | GitLab CI | `souverainrecrut` | Groupe `docker`, **sans sudo**, mot de passe verrouillé |
+
+Un compte `deploy` existait déjà sur le serveur, utilisé par un autre projet (GitHub Actions). Un **compte dédié** a été préféré, pour que la révocation et la traçabilité dans les journaux SSH soient indépendantes par projet.
+
+> Le groupe `docker` donne un contrôle équivalent à root sur les conteneurs. C'est le compromis habituel pour un déploiement par Docker Compose. Il est limité ici par une clé dédiée, sans sudo, utilisée uniquement par la pipeline.
+
+## 4. Ansible — préparation du serveur (§4.3)
+
+| Fichier | Contenu |
+|---|---|
+| `ansible/inventory.ini` | Groupe `production` : le VPS, connexion `root` par clé |
+| `ansible/ansible.cfg` | Inventaire par défaut, vérification de l'empreinte SSH, *pipelining* |
+| `ansible/group_vars/production.yml` | Utilisateur de déploiement, répertoire, conteneur et réseau Caddy, domaine |
+| `ansible/templates/souverainrecrut.caddy.j2` | Site Caddy `api.tanguydavid.fr` → `souverainrecrut-api:4000` |
+| `ansible/playbook.yml` | Tâches de préparation |
+
+| Exigence §4.3 | Tâche | Garde-fou sur un serveur partagé |
+|---|---|---|
+| Mettre à jour le système, installer les dépendances | Index apt, `ca-certificates`, `curl`, `gnupg`, `acl` ; mises à jour de **sécurité** automatiques (`unattended-upgrades`) | Pas d'`apt upgrade` complet ni de redémarrage automatique, qui interrompraient les services hébergés |
+| Installer Docker Engine + Compose | Dépôt officiel Docker (`deb822_repository`) | Exécuté **uniquement si Docker est absent** |
+| Activer et démarrer Docker | `systemd_service: state=started` | Ne redémarre jamais un service déjà actif |
+| Créer le répertoire de déploiement | `/opt/souverainrecrut` (`souverainrecrut`, `0750`) | — |
+| Exposition HTTPS | Fichier de site Caddy dédié, `caddy validate` puis `caddy reload` | En cas d'échec, le fichier est **retiré automatiquement** (`block`/`rescue`) |
+| Vérifier le fonctionnement | `docker ps` exécuté en tant qu'utilisateur de déploiement | — |
+
+```bash
+cd deploiement/ansible
+ansible production -m ping                    # connectivité
+ansible-playbook playbook.yml --check --diff  # simulation : rien n'est modifié
+ansible-playbook playbook.yml --diff          # application
+```
+
+| Exécution | Résultat |
+|---|---|
+| Simulation | `changed=6 failed=0` : acl, utilisateur, clé, répertoire, site Caddy, index apt. Docker *skipped* car déjà présent ([rapport](reports/ansible-check-2026-11-09.txt)) |
+| Application rejouée | `changed=0 failed=0` : **idempotence** vérifiée ([rapport](reports/ansible-apply-2026-11-09.txt)) |
+| Vérifications | Connexion `souverainrecrut` par clé OK ; site existant `tanguydavid.fr` toujours en 200 ; certificat Let's Encrypt obtenu pour `api.tanguydavid.fr` |
+
+## 5. Docker Compose — API + PostgreSQL (§5.2)
+
+Fichiers : [`deployment/docker-compose.yml`](deployment/docker-compose.yml), [`deployment/.env.example`](deployment/.env.example). Sur le serveur : `/opt/souverainrecrut/`.
+
+| Exigence §5.2 | Mise en œuvre |
+|---|---|
+| Image versionnée Docker Hub | `${BACKEND_IMAGE}:${BACKEND_TAG}`, tag `<version>-<sha7>` publié par Jenkins, jamais `latest` |
+| Variables API et Prisma | `DATABASE_URL`, `JWT_SECRET`, `NODE_ENV`, `PORT`, `API_VERSION`, `FRONTEND_URL` ; les secrets viennent du `.env` (droits 600, non versionné) |
+| Volume persistant PostgreSQL | Volume nommé `db_data`, conservé lors des mises à jour et des rollbacks |
+| Réseau Docker adapté | `backend` (**interne**, sans accès Internet) pour API ↔ PostgreSQL ; `web` (externe) pour Caddy ↔ API, alias `souverainrecrut-api` ; **aucun port publié** |
+| Redémarrage | `restart: unless-stopped` (API et base) |
+| Contrôles de santé | PostgreSQL : `pg_isready` ; API : healthcheck de l'image sur `/v1/health` |
+| Migrations maîtrisées | Service ponctuel `migrate` (`prisma migrate deploy`) : applique uniquement les migrations versionnées dans l'image, après que la base est *healthy*. L'API ne démarre que si les migrations réussissent (`service_completed_successfully`) |
+| Journaux | Rotation `json-file` (3 × 10 Mo) |
+
+**Test local avant déploiement** (avec l'image `1.0.0-7fa9454`) :
+- migrations appliquées (`All migrations have been successfully applied`) ;
+- API *healthy* ;
+- `/v1/ready` → `READY / CONNECTED` via l'alias `souverainrecrut-api` ;
+- redéploiement : `No pending migrations to apply` ;
+- PostgreSQL injoignable depuis le réseau `web`.
+
+> Le script `prisma/seed.ts` **n'est pas exécuté en production** : il vide toutes les tables avant d'insérer des données de démonstration.
+
+## 6. Pipeline GitLab CI/CD (§4.4 et §5.3)
+
+Fichier : [`.gitlab-ci.yml`](.gitlab-ci.yml). Il s'exécute sur GitLab.com (runners hébergés), dans un projet dédié `souverainrecrut-deploiement` qui contient ce dossier `deploiement/`.
+
+| Job | Rôle |
+|---|---|
+| `validate-tag` | Format `<version>-<sha7>` obligatoire (`latest` refusé) ; existence du tag vérifiée sur Docker Hub |
+| `deploy-production` | `scp` du fichier Compose ; `pg_dump` de la base (5 sauvegardes conservées) ; mise à jour de `BACKEND_TAG` ; `docker compose pull` puis `up -d --wait` ; **retour automatique au tag précédent en cas d'échec** ; journal `deploy-history.log` |
+| `verify-api` | `GET https://api.tanguydavid.fr/v1/ready` doit répondre `READY` (10 tentatives) |
+
+- **Déclenchement :** manuel uniquement (*Run pipeline* avec `BACKEND_TAG`, ou appel API).
+- **Concurrence :** `resource_group: production`, donc un seul déploiement à la fois.
+- **Historique :** environnement GitLab `production`, avec bouton *Re-deploy* sur un déploiement antérieur.
+
+**Variables CI/CD** (*Settings → CI/CD → Variables*) :
+
+| Variable | Type / options | Contenu |
+|---|---|---|
+| `SSH_PRIVATE_KEY` | File, Protected | Clé privée `souverainrecrut_deploy` |
+| `SSH_KNOWN_HOSTS` | Protected | Sortie de `ssh-keyscan 45.155.170.40` (vérification stricte de l'hôte) |
+| `DEPLOY_HOST` | Protected | `45.155.170.40` |
+| `DEPLOY_USER` | Protected | `souverainrecrut` |
+| `DOCKERHUB_USER` / `DOCKERHUB_TOKEN` | Protected (+ Masked pour le token) | Optionnel, car l'image est publique ; token en lecture seule ; `docker logout` après le job |
+
+Les secrets applicatifs (`JWT_SECRET`, `POSTGRES_PASSWORD`) **ne sont pas** dans GitLab : ils restent dans `/opt/souverainrecrut/.env` sur le serveur, et la pipeline ne modifie que `BACKEND_TAG`.
+
+**Tests locaux du comportement** (Compose v5) :
+- `up --wait` réussit au premier déploiement comme au redéploiement ;
+- `pg_dump` est fonctionnel ;
+- un tag défaillant fait échouer `up --wait`, ce qui déclenche le retour au tag précédent.

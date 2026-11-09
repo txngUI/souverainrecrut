@@ -1,0 +1,156 @@
+# ==========================================================================
+# Pipeline de déploiement — API SouverainRecrut (GitLab CI/CD)
+#
+# Déploie sur le serveur de production une image DÉJÀ publiée par Jenkins
+# sur Docker Hub. Aucune image n'est reconstruite ici.
+#
+# Lancement : Build > Pipelines > Run pipeline, variable BACKEND_TAG
+# (ex. 1.0.0-7fa9454). Rollback : relancer avec le tag précédent, ou
+# Operate > Environments > production > Re-deploy sur un déploiement antérieur.
+#
+# Variables CI/CD à définir dans le projet (Settings > CI/CD > Variables) :
+#   SSH_PRIVATE_KEY   (File, Protected)     clé privée de déploiement
+#   SSH_KNOWN_HOSTS   (Protected)            empreinte du serveur (ssh-keyscan)
+#   DEPLOY_HOST       (Protected)            adresse du serveur
+#   DEPLOY_USER       (Protected)            compte de déploiement
+#   DOCKERHUB_USER    (Protected, optionnel) compte Docker Hub
+#   DOCKERHUB_TOKEN   (Masked, Protected, optionnel) token lecture seule
+#
+# Les secrets applicatifs (JWT_SECRET, POSTGRES_PASSWORD) restent dans
+# /opt/souverainrecrut/.env sur le serveur : la pipeline ne modifie que BACKEND_TAG.
+# ==========================================================================
+
+variables:
+  BACKEND_TAG:
+    value: ""
+    description: "Tag de l'image à déployer, au format <version>-<sha7> (ex. 1.0.0-7fa9454)"
+  BACKEND_IMAGE: iamkrugs/souverainrecrut-backend
+  DEPLOY_DIR: /opt/souverainrecrut
+  API_URL: https://api.tanguydavid.fr
+
+# La pipeline ne se lance que manuellement (formulaire ou API), jamais à chaque push
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "trigger"
+
+default:
+  image: alpine:3.24
+
+stages:
+  - validate
+  - deploy
+  - verify
+
+# --------------------------------------------------------------------------
+# 1. Valider le tag demandé
+# --------------------------------------------------------------------------
+validate-tag:
+  stage: validate
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      if ! echo "$BACKEND_TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]{7}$'; then
+        echo "Tag invalide : '$BACKEND_TAG' (format attendu <version>-<sha7>, jamais latest)"
+        exit 1
+      fi
+    - NAMESPACE="${BACKEND_IMAGE%%/*}"; REPOSITORY="${BACKEND_IMAGE#*/}"
+    - |
+      STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
+        "https://hub.docker.com/v2/namespaces/$NAMESPACE/repositories/$REPOSITORY/tags/$BACKEND_TAG")
+      if [ "$STATUS" != "200" ]; then
+        echo "L'image $BACKEND_IMAGE:$BACKEND_TAG n'existe pas sur Docker Hub (HTTP $STATUS)"
+        exit 1
+      fi
+    - echo "Image validée : $BACKEND_IMAGE:$BACKEND_TAG"
+
+# --------------------------------------------------------------------------
+# 2. Déployer sur le serveur
+# --------------------------------------------------------------------------
+deploy-production:
+  stage: deploy
+  # Un seul déploiement à la fois sur la production
+  resource_group: production
+  environment:
+    name: production
+    url: $API_URL
+  before_script:
+    - apk add --no-cache openssh-client
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    # Vérification stricte de l'empreinte du serveur (pas de StrictHostKeyChecking=no)
+    - echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+    - chmod 600 "$SSH_PRIVATE_KEY"
+    - SSH="ssh -i $SSH_PRIVATE_KEY -o BatchMode=yes $DEPLOY_USER@$DEPLOY_HOST"
+  script:
+    # Transmettre le fichier Compose versionné
+    - scp -i "$SSH_PRIVATE_KEY" -o BatchMode=yes deployment/docker-compose.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/docker-compose.yml"
+
+    # Connexion Docker Hub (optionnelle : l'image est publique), token via stdin
+    - |
+      if [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+        printf '%s' "$DOCKERHUB_TOKEN" | $SSH "docker login -u '$DOCKERHUB_USER' --password-stdin"
+      fi
+
+    # Déploiement : sauvegarde de la base, mise à jour du tag, pull, démarrage,
+    # attente de l'état healthy ; retour automatique au tag précédent en cas d'échec
+    - |
+      $SSH "TAG='$BACKEND_TAG' PIPELINE='$CI_PIPELINE_ID' DIR='$DEPLOY_DIR' sh -s" <<'REMOTE'
+      set -eu
+      cd "$DIR"
+      test -f .env || { echo ".env absent sur le serveur"; exit 1; }
+      mkdir -p backups
+
+      PREVIOUS=$(grep '^BACKEND_TAG=' .env | cut -d= -f2)
+      echo "Version en place : $PREVIOUS -> version demandée : $TAG"
+
+      # Sauvegarde de la base avant toute migration (5 dernières conservées)
+      if docker compose ps --status running --services | grep -qx db; then
+        BACKUP="backups/db-$(date +%Y%m%d-%H%M%S)-avant-$TAG.sql.gz"
+        docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > "$BACKUP"
+        echo "Sauvegarde : $BACKUP"
+        ls -1t backups/*.sql.gz | tail -n +6 | xargs -r rm --
+      fi
+
+      sed -i "s/^BACKEND_TAG=.*/BACKEND_TAG=$TAG/" .env
+      docker compose pull
+
+      if docker compose up -d --wait --wait-timeout 180; then
+        echo "$(date -Is) $PREVIOUS -> $TAG OK (pipeline $PIPELINE)" >> deploy-history.log
+      else
+        echo "Échec du déploiement de $TAG : retour automatique à $PREVIOUS"
+        docker compose logs --tail 50 migrate api || true
+        sed -i "s/^BACKEND_TAG=.*/BACKEND_TAG=$PREVIOUS/" .env
+        docker compose up -d --wait --wait-timeout 180
+        echo "$(date -Is) $PREVIOUS -> $TAG ÉCHEC, retour à $PREVIOUS (pipeline $PIPELINE)" >> deploy-history.log
+        exit 1
+      fi
+
+      docker compose ps -a
+      REMOTE
+  after_script:
+    # Ne jamais laisser les identifiants Docker Hub sur le serveur
+    - |
+      if [ -n "${DOCKERHUB_TOKEN:-}" ]; then
+        ssh -i "$SSH_PRIVATE_KEY" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" "docker logout" || true
+      fi
+
+# --------------------------------------------------------------------------
+# 3. Vérifier la disponibilité de l'API
+# --------------------------------------------------------------------------
+verify-api:
+  stage: verify
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - |
+      for i in $(seq 1 10); do
+        BODY=$(curl -sf "$API_URL/v1/ready" || true)
+        if echo "$BODY" | grep -q '"status":"READY"'; then
+          echo "API disponible : $BODY"
+          exit 0
+        fi
+        echo "Tentative $i/10 : API pas encore prête"
+        sleep 6
+      done
+      echo "L'API ne répond pas READY sur $API_URL/v1/ready"
+      exit 1

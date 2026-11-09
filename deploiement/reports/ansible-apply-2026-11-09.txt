@@ -1,0 +1,64 @@
+
+PLAY [Préparer le serveur pour le déploiement de l'API SouverainRecrut] ********
+
+TASK [Gathering Facts] *********************************************************
+ok: [vps-tanguy]
+
+TASK [Mettre à jour l'index des paquets] ***************************************
+ok: [vps-tanguy]
+
+TASK [Installer les dépendances système] ***************************************
+ok: [vps-tanguy]
+
+TASK [Activer les mises à jour de sécurité automatiques] ***********************
+ok: [vps-tanguy]
+
+TASK [Détecter Docker Engine et le plugin Compose] *****************************
+ok: [vps-tanguy]
+
+TASK [Ajouter le dépôt officiel Docker (clé de signature incluse)] *************
+skipping: [vps-tanguy]
+
+TASK [Installer les paquets Docker] ********************************************
+skipping: [vps-tanguy]
+
+TASK [Activer et démarrer le service Docker (sans redémarrage)] ****************
+ok: [vps-tanguy]
+
+TASK [Créer l'utilisateur de déploiement (groupe docker, sans sudo)] ***********
+ok: [vps-tanguy]
+
+TASK [Autoriser la clé SSH de déploiement] *************************************
+ok: [vps-tanguy]
+
+TASK [Créer le répertoire de déploiement] **************************************
+ok: [vps-tanguy]
+
+TASK [Vérifier que le réseau Docker du reverse proxy existe] *******************
+ok: [vps-tanguy]
+
+TASK [Déposer la configuration Caddy de l'API] *********************************
+ok: [vps-tanguy]
+
+TASK [Valider la configuration complète de Caddy] ******************************
+skipping: [vps-tanguy]
+
+TASK [Recharger Caddy à chaud (sans coupure des autres sites)] *****************
+skipping: [vps-tanguy]
+
+TASK [Vérifier que l'utilisateur de déploiement peut piloter Docker] ***********
+ok: [vps-tanguy]
+
+TASK [Afficher l'état final] ***************************************************
+ok: [vps-tanguy] => {
+    "msg": [
+        "Docker Compose : Docker Compose version v5.5.0",
+        "Utilisateur souverainrecrut : accès Docker OK",
+        "Répertoire : /opt/souverainrecrut",
+        "Site Caddy : https://api.tanguydavid.fr -> souverainrecrut-api:4000"
+    ]
+}
+
+PLAY RECAP *********************************************************************
+vps-tanguy                 : ok=13   changed=0    unreachable=0    failed=0    skipped=4    rescued=0    ignored=0   
+
