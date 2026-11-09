@@ -1,0 +1,22 @@
+# Dépendances et artefacts : reconstruits dans l'image
+node_modules
+dist
+coverage
+.scannerwork
+
+# Secrets : jamais dans le contexte de build
+.env
+.env.*
+
+# Inutile à l'exécution
+tests
+*.log
+Dockerfile
+.dockerignore
+jest.config.js
+tsconfig.test.json
+eslint.config.mjs
+.prettierrc.json
+.prettierignore
+sonar-project.properties
+.trivyignore.yaml

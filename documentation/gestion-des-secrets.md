@@ -1,0 +1,96 @@
+# Gestion des secrets — SouverainRecrut CI/CD
+
+> **Aucune valeur secrète ne figure dans ce document ni dans le dépôt** (cahier des charges §4.4 et §6).
+> Ce document recense chaque secret : son rôle, où il est stocké, qui l'utilise, et comment le créer, le renouveler ou le révoquer.
+
+## 1. Principes appliqués
+
+| Règle | Mise en œuvre |
+|---|---|
+| Jamais de secret dans Git | `.env` ignoré par `.gitignore` ; seuls des `.env.example` aux valeurs factices sont versionnés |
+| Jamais de secret dans le Jenkinsfile ni dans `.gitlab-ci.yml` | Les fichiers de pipeline ne référencent que des **identifiants** (`credentialsId`, noms de variables) |
+| Jamais de secret dans l'image Docker | Pas de secret en `ARG`/`ENV` dans le Dockerfile ; `.dockerignore` exclut `.env` |
+| Jamais de secret dans les logs | Credentials Jenkins masqués ; `docker login --password-stdin` (pas de `-p`) ; variables GitLab *masked* |
+| Portée minimale | Tokens limités au strict nécessaire (ex. Docker Hub : *Read & Write* sur le seul dépôt utile) |
+| Durée de vie limitée | Date d'expiration posée lorsque l'outil le permet ; rotation décrite §4 |
+| Détection | Scan `gitleaks` du dépôt avant livraison (§5) |
+
+## 2. Inventaire
+
+Statut : ⏳ = à créer · ✅ = créé et stocké
+
+### 2.1 Intégration continue (Jenkins, jour 1)
+
+| Secret | Utilisé par | Stocké dans | Identifiant de référence | Type | Statut |
+|---|---|---|---|---|---|
+| Token d'accès Docker Hub | Jenkins, étape *Publish* (`docker push`) | Credentials Jenkins | `dockerhub` | Username with password (utilisateur + token) | ⏳ |
+| Token d'analyse SonarQube | Jenkins, étape *Qualité* | Credentials Jenkins + config du serveur SonarQube dans Jenkins | `sonar-token` | Secret text | ⏳ |
+| Mot de passe admin SonarQube | Administration de SonarQube | Gestionnaire de mots de passe personnel | — | — | ⏳ (le mot de passe par défaut `admin` est changé au 1er login) |
+| Mot de passe admin Jenkins | Administration de Jenkins | Gestionnaire de mots de passe personnel | — | — | ⏳ (le mot de passe initial `initialAdminPassword` n'est plus utilisé après le setup) |
+| Mot de passe de la base PostgreSQL de SonarQube | Conteneurs `sonarqube` / `sonar-db` | Fichier `.env` sur la VM, non versionné | `SONAR_DB_PASSWORD` | Variable d'environnement | ⏳ |
+| Token GitHub (si dépôt privé) | Jenkins, étape *Checkout* | Credentials Jenkins | `github` | Username with password (PAT *fine-grained*, lecture seule) | ⏳ / non nécessaire si le fork est public |
+
+### 2.2 Application Backend
+
+| Secret | Utilisé par | Stocké dans | Variable | Statut |
+|---|---|---|---|---|
+| Clé de signature JWT | API (signature/vérification des tokens) | `.env` sur le serveur de déploiement | `JWT_SECRET` | ⏳ |
+| Chaîne de connexion PostgreSQL (contient le mot de passe) | API + Prisma (migrations) | `.env` sur le serveur de déploiement | `DATABASE_URL` | ⏳ |
+| Mot de passe PostgreSQL applicatif | Conteneur `postgres` | `.env` sur le serveur de déploiement | `POSTGRES_PASSWORD` | ⏳ |
+
+> Pour les tests automatisés, un `JWT_SECRET` **factice** (`test-secret`) est défini dans `backend/tests/setup-env.ts`. Il ne sert qu'aux tests et n'est utilisé dans aucun environnement réel.
+
+### 2.3 Déploiement (GitLab CI, jour 2)
+
+| Secret | Utilisé par | Stocké dans | Variable GitLab | Options | Statut |
+|---|---|---|---|---|---|
+| Utilisateur Docker Hub | Pipeline GitLab (`docker login` sur le serveur) | Variables CI/CD GitLab | `DOCKERHUB_USER` | — | ⏳ |
+| Token Docker Hub (lecture seule) | Pipeline GitLab (`docker pull`) | Variables CI/CD GitLab | `DOCKERHUB_TOKEN` | Masked, Protected | ⏳ |
+| Clé privée SSH de déploiement | Pipeline GitLab → serveur | Variables CI/CD GitLab | `SSH_PRIVATE_KEY` | Type *File*, Protected | ⏳ |
+| Adresse du serveur | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_HOST` | — (pas un secret, mais centralisé) | ⏳ |
+| Utilisateur SSH | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_USER` | — | ⏳ |
+| Variables applicatives (§2.2) | Fichier `.env` généré sur le serveur | Variables CI/CD GitLab | `JWT_SECRET`, `POSTGRES_PASSWORD`… | Masked, Protected | ⏳ |
+
+## 3. Création des secrets
+
+| Secret | Procédure |
+|---|---|
+| Token Docker Hub | Docker Hub → *Account settings* → *Personal access tokens* → *Generate*. Permissions : *Read & Write* pour Jenkins, *Read-only* pour GitLab. Poser une expiration. |
+| Token SonarQube | SonarQube → *My Account* → *Security* → *Generate Token*. Type *Global Analysis Token* (ou *Project Analysis Token*), avec une expiration. |
+| Clé JWT / mots de passe | `openssl rand -hex 32` |
+| Clé SSH de déploiement | `ssh-keygen -t ed25519 -C "deploy-souverainrecrut" -f deploy_key`, puis la clé publique dans `~/.ssh/authorized_keys` du serveur et la clé privée dans GitLab. La clé est dédiée au déploiement, jamais la clé personnelle. |
+| Credential Jenkins | *Administrer Jenkins* → *Credentials* → *System* → *Global* → *Add credentials*, avec l'identifiant indiqué dans l'inventaire. |
+
+## 4. Rotation et révocation
+
+| Événement | Action |
+|---|---|
+| Secret exposé (commit, log, capture d'écran…) | 1) **Révoquer immédiatement** dans l'outil d'origine. 2) Générer un nouveau secret. 3) Mettre à jour Jenkins ou GitLab. 4) Relancer la pipeline. Supprimer le commit ne suffit pas : l'historique Git conserve la valeur. |
+| Fin du projet / après correction | Révoquer les tokens Docker Hub, SonarQube et GitHub, ainsi que la clé SSH de déploiement. |
+| Expiration d'un token | Générer un nouveau token, mettre à jour le credential (même identifiant), puis relancer un build pour vérifier. |
+
+## 5. Vérification avant livraison
+
+```bash
+# Aucun secret dans le dépôt ni dans l'historique
+docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest detect --source /repo -v
+
+# Aucun fichier .env réel suivi par Git (seuls les .env.example doivent sortir)
+git ls-files | grep -E '(^|/)\.env' 
+```
+
+Preuves jointes au livrable dans `documentation/captures/` :
+
+- écran *Credentials* de Jenkins (valeurs masquées) ;
+- variables CI/CD GitLab (valeurs masquées) ;
+- log de pipeline montrant `****` à la place des secrets ;
+- résultat du scan gitleaks.
+
+## 6. Accès de l'évaluateur
+
+Les secrets ne sont pas transmis dans le livrable. L'évaluation se fait :
+
+- **par démonstration** lors de la soutenance, sur l'environnement de l'étudiant ;
+- **par reproduction** : l'évaluateur crée ses propres tokens en suivant le §3 et les enregistre sous les mêmes identifiants. Les pipelines fonctionnent alors sans modification.
+
+Si une transmission de valeurs est explicitement demandée, elle se fait **hors dépôt et hors archive**, avec des tokens dédiés à l'évaluation, de portée minimale, avec expiration, et révoqués après la correction.

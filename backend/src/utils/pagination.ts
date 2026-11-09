@@ -22,9 +22,9 @@ export interface PaginationMeta {
  * à partir des paramètres de requête.
  */
 export function getPagination(page?: string, limit?: string): PaginationOptions {
-  const currentPage = Math.max(parseInt(page || "1", 10), 1);
+  const currentPage = Math.max(Number.parseInt(page || "1", 10), 1);
 
-  const currentLimit = Math.min(Math.max(parseInt(limit || "10", 10), 1), 100);
+  const currentLimit = Math.min(Math.max(Number.parseInt(limit || "10", 10), 1), 100);
 
   return {
     page: currentPage,

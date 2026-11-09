@@ -1,0 +1,11 @@
+# Exceptions Trivy acceptées — chaque entrée est justifiée et expire.
+# Passé la date, la vulnérabilité redevient bloquante dans la pipeline.
+vulnerabilities:
+  - id: CVE-2026-40345
+    paths:
+      - "app/node_modules/deepmerge-ts/package.json"
+    statement: >-
+      deepmerge-ts est une dépendance transitive de prisma / @prisma/config (outillage de
+      migration), non atteignable depuis les requêtes HTTP de l'API. Le correctif (8.0.0)
+      n'est disponible qu'avec Prisma 7 (montée de version majeure à planifier).
+    expired_at: 2026-12-31

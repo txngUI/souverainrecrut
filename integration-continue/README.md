@@ -8,9 +8,9 @@ Le code testé se trouve dans `backend/`. Ce dossier contient la documentation, 
 | 3.1 Préparation du dépôt (fork, clone, branche `Dev`) | ✅ |
 | 3.2 Tests Backend + couverture | ✅ |
 | Lint (ESLint) + formatage (Prettier) | ✅ |
-| Infra : VM Ubuntu Server (VMware) | ⏳ |
-| Lab : SonarQube + Jenkins (Docker) | ⏳ |
-| 3.3 Analyse SonarQube + Quality Gate | ⏳ |
+| Lab local : SonarQube + Jenkins (Docker Compose, `lab/`) | ✅ |
+| 3.3 Analyse SonarQube + Quality Gate | ✅ |
+| VM Ubuntu Server (VMware) — cible de déploiement, jour 2 | ⏳ |
 | 3.4 / 3.5 Jenkins + Jenkinsfile | ⏳ |
 | 3.6 Image Docker, Trivy, Docker Hub | ⏳ |
 
@@ -97,7 +97,62 @@ Configuration : `backend/eslint.config.mjs`, `backend/.prettierrc.json` et `back
 
 Correction faite à cette occasion : `src/middlewares/auth.middleware.ts` utilisait `as any` pour le rôle extrait du JWT. Il est désormais typé avec l'enum Prisma `Role`.
 
-## 4. Fichiers ajoutés ou modifiés
+## 4. Lab local (Jenkins + SonarQube)
+
+Le lab tourne en local avec Docker Compose (`lab/docker-compose.yml`). La VM Ubuntu sous VMware est réservée au déploiement (jour 2).
+
+| Service | Image | Accès |
+|---|---|---|
+| `sonarqube` | `sonarqube:community` (26.11) | http://localhost:9000 |
+| `sonar-db` | `postgres:17-alpine` | interne uniquement |
+| `jenkins` | image construite depuis `lab/jenkins/Dockerfile` (Jenkins LTS JDK 21 + Docker CLI + Node.js 22 + plugins) | http://localhost:8080 |
+
+```bash
+cd integration-continue/lab
+cp .env.example .env    # puis renseigner SONAR_DB_PASSWORD (openssl rand -hex 16) et DOCKER_GID
+docker compose up -d --build
+```
+
+Choix techniques et compromis :
+
+- **Ports liés à `127.0.0.1`** : les services ne sont pas exposés sur le réseau local. Contrepartie : GitHub ne peut pas joindre Jenkins par webhook, donc le déclenchement se fait par *Poll SCM*.
+- **Socket Docker de l'hôte monté dans Jenkins** : Jenkins peut construire et scanner des images sans Docker-in-Docker. Contrepartie : Jenkins a des droits équivalents à root sur l'hôte. Ce choix est acceptable pour un lab local ; en production, on utiliserait un agent de build dédié ou un builder sans daemon (Kaniko, BuildKit rootless).
+- Le mot de passe de la base SonarQube est fourni par un `.env` non versionné (voir `documentation/gestion-des-secrets.md`).
+
+## 5. Analyse SonarQube (§3.3)
+
+Configuration versionnée : `backend/sonar-project.properties` (sources, tests, exclusions, chemin du rapport `lcov`). Aucun secret : l'URL du serveur et le token sont fournis à l'exécution.
+
+Analyse manuelle, depuis `backend/` :
+
+```bash
+npm run test:coverage
+read -rsp "Token Sonar : " SONAR_TOKEN && export SONAR_TOKEN
+docker run --rm --network souverainrecrut-ci_default \
+  -e SONAR_HOST_URL=http://sonarqube:9000 -e SONAR_TOKEN \
+  -v "$PWD:/usr/src" sonarsource/sonar-scanner-cli
+```
+
+### Résultats et corrections
+
+| Indicateur | 1re analyse | Après corrections |
+|---|---|---|
+| Quality Gate (*Sonar way*) | ✅ Passed | ✅ Passed |
+| Bugs | 0 | 0 |
+| Vulnérabilités | 1 | **0** |
+| Code smells | 2 | **0** |
+| Security hotspots | 0 | 0 |
+| Duplications | 0,0 % | 0,0 % |
+| Couverture | 99,8 % | 99,8 % |
+
+| Règle | Constat | Correction |
+|---|---|---|
+| `typescript:S5689` (sécurité) | Express envoie `X-Powered-By: Express`, ce qui révèle la technologie utilisée à un attaquant | `app.disable("x-powered-by")` dans `src/app.ts`, avec un test d'intégration qui vérifie l'absence de l'en-tête |
+| `typescript:S7773` ×2 (maintenabilité) | Usage de la fonction globale `parseInt` | Remplacée par `Number.parseInt` dans `src/utils/pagination.ts` |
+
+Exports bruts de l'API SonarQube : dossier [`sonar/`](sonar/) (`*-initial.json` / `*-apres.json`).
+
+## 6. Fichiers ajoutés ou modifiés
 
 ```
 backend/

@@ -1,0 +1,166 @@
+// ==========================================================================
+// Pipeline CI — Backend SouverainRecrut
+//
+// Checkout Dev → npm ci → Prisma → lint → tests + couverture → SonarQube
+// → Quality Gate → build image → scan Trivy → publication Docker Hub
+//
+// Prérequis Jenkins (voir integration-continue/README.md) :
+//   - credentials : "sonar-token" (Secret text), "dockerhub" (Username with password)
+//   - serveur SonarQube nommé "sonarqube", scanner nommé "sonar-scanner"
+// Aucun secret n'est écrit dans ce fichier.
+// ==========================================================================
+
+pipeline {
+  agent any
+
+  options {
+    timeout(time: 30, unit: 'MINUTES')
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+  }
+
+  triggers {
+    // Lab local : GitHub ne peut pas joindre Jenkins par webhook,
+    // Jenkins interroge donc le dépôt toutes les ~5 minutes.
+    pollSCM('H/5 * * * *')
+  }
+
+  environment {
+    IMAGE_NAME  = 'iamkrugs/souverainrecrut-backend'
+    TRIVY_IMAGE = 'aquasec/trivy:0.76.2'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        script {
+          // Tag traçable : version applicative + identifiant du commit
+          env.APP_VERSION = sh(script: "node -p \"require('./backend/package.json').version\"", returnStdout: true).trim()
+          env.GIT_SHORT   = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
+          env.IMAGE_TAG   = "${env.APP_VERSION}-${env.GIT_SHORT}"
+          currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.IMAGE_TAG}"
+        }
+      }
+    }
+
+    stage('Install') {
+      steps {
+        dir('backend') { sh 'npm ci' }
+      }
+    }
+
+    stage('Prisma generate') {
+      steps {
+        dir('backend') { sh 'npx prisma generate' }
+      }
+    }
+
+    stage('Lint') {
+      steps {
+        dir('backend') { sh 'npm run lint && npm run format:check' }
+      }
+    }
+
+    stage('Tests') {
+      steps {
+        // Échoue si un test échoue ou si la couverture passe sous 80 % (jest.config.js)
+        dir('backend') { sh 'npm run test:coverage' }
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'backend/coverage/lcov.info', allowEmptyArchive: true
+        }
+      }
+    }
+
+    stage('SonarQube') {
+      steps {
+        dir('backend') {
+          // URL du serveur et token injectés par Jenkins (credential "sonar-token")
+          withSonarQubeEnv('sonarqube') {
+            sh "${tool 'sonar-scanner'}/bin/sonar-scanner -Dsonar.projectVersion=${env.IMAGE_TAG}"
+          }
+        }
+      }
+    }
+
+    stage('Quality Gate') {
+      steps {
+        // Attend le résultat envoyé par le webhook SonarQube ; un gate rouge arrête la pipeline
+        timeout(time: 5, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    stage('Docker build') {
+      steps {
+        sh '''
+          docker build \
+            --label org.opencontainers.image.version="$APP_VERSION" \
+            --label org.opencontainers.image.revision="$GIT_COMMIT" \
+            --label org.opencontainers.image.source="$GIT_URL" \
+            -t "$IMAGE_NAME:$IMAGE_TAG" \
+            -t "$IMAGE_NAME:sha-$GIT_SHORT" \
+            backend
+        '''
+      }
+    }
+
+    stage('Trivy') {
+      steps {
+        sh '''
+          # --volumes-from : le conteneur Trivy voit le workspace Jenkins au même chemin
+          # (lecture de backend/.trivyignore.yaml, écriture du rapport dans le workspace)
+          TRIVY="docker run --rm --volumes-from $HOSTNAME -v trivy-cache:/root/.cache/ -w $WORKSPACE $TRIVY_IMAGE"
+
+          # 1) Rapport complet, toutes sévérités (archivé)
+          $TRIVY image --scanners vuln --format table --output trivy-report.txt \
+            --ignorefile backend/.trivyignore.yaml "$IMAGE_NAME:$IMAGE_TAG"
+
+          # 2) Contrôle bloquant : aucune vulnérabilité HIGH/CRITICAL corrigeable
+          #    qui ne soit pas une exception justifiée et non expirée
+          $TRIVY image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            --ignorefile backend/.trivyignore.yaml "$IMAGE_NAME:$IMAGE_TAG"
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'trivy-report.txt', allowEmptyArchive: true
+        }
+      }
+    }
+
+    stage('Publish') {
+      // Publication uniquement depuis Dev, et seulement si toutes les étapes précédentes ont réussi
+      when {
+        expression { env.GIT_BRANCH in ['origin/Dev', 'Dev'] }
+      }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                          usernameVariable: 'DH_USER',
+                                          passwordVariable: 'DH_TOKEN')]) {
+          sh '''
+            echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
+            docker push "$IMAGE_NAME:$IMAGE_TAG"
+            docker push "$IMAGE_NAME:sha-$GIT_SHORT"
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker logout || true'
+      cleanWs()
+    }
+    success {
+      echo "Image publiée : ${env.IMAGE_NAME}:${env.IMAGE_TAG}"
+    }
+    failure {
+      echo 'Pipeline en échec : aucune image publiée.'
+    }
+  }
+}

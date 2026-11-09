@@ -14,6 +14,11 @@ describe("Routes publiques", () => {
     expect(res.body).toMatchObject({ success: true, api: "/v1" });
   });
 
+  it("ne révèle pas le framework via l'en-tête X-Powered-By", async () => {
+    const res = await request(app).get("/");
+    expect(res.headers["x-powered-by"]).toBeUndefined();
+  });
+
   it("GET /api-docs/ sert la documentation Swagger", async () => {
     const res = await request(app).get("/api-docs/");
     expect(res.status).toBe(200);
