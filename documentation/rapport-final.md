@@ -8,6 +8,7 @@
 
 ## Sommaire
 
+0. [Documents du livrable : où les trouver et pourquoi les lire](#0-documents-du-livrable--où-les-trouver-et-pourquoi-les-lire)
 1. [Contexte et objectif](#1-contexte-et-objectif)
 2. [Architecture mise en œuvre](#2-architecture-mise-en-œuvre)
 3. [Tests automatisés et couverture](#3-tests-automatisés-et-couverture)
@@ -23,6 +24,52 @@
 
 ---
 
+## 0. Documents du livrable : où les trouver et pourquoi les lire
+
+Ce rapport donne une **vue synthétique** de la démarche et des résultats. Le détail technique, les fichiers exécutables et les preuves se trouvent dans les documents ci-dessous. Les chemins sont relatifs à la racine du dépôt [github.com/txngUI/souverainrecrut](https://github.com/txngUI/souverainrecrut) (branche `Dev`). Le dossier `deploiement/` est aussi publié dans le projet GitLab `tanguy-cicd/souverainrecrut-deploiement`.
+
+### 0.1 Documentation (`documentation/`)
+
+| Document | Contenu | Pourquoi le consulter |
+|---|---|---|
+| [`architecture.md`](architecture.md) | Schéma complet de la chaîne, rôle de chaque outil, flux en 11 étapes du commit au déploiement, exposition réseau, choix techniques | Comprendre **comment les pièces s'assemblent** et **pourquoi** ces choix ont été faits |
+| [`gestion-des-secrets.md`](gestion-des-secrets.md) | **Inventaire de tous les secrets** (rôle, lieu de stockage, identifiant, statut), procédures de création, rotation et révocation, incident traité, vérification avant livraison | Vérifier qu'**aucun secret n'est dans le dépôt** et savoir où chacun est réellement stocké (credentials Jenkins, variables GitLab, serveur). C'est aussi la procédure à suivre en cas de fuite. |
+| [`procedure-deploiement.md`](procedure-deploiement.md) | Mise en place initiale, déploiement courant, vérifications, déploiement de secours, dépannage | **Reproduire** le déploiement pas à pas (exigence de reproductibilité du §7) |
+| [`procedure-rollback.md`](procedure-rollback.md) | Choix de la procédure selon la situation, redéploiement d'un tag précédent, restauration de la base (procédure testée), configuration du serveur | **Revenir à une version antérieure** en cas d'incident (exigence de continuité du §7) |
+| [`captures/`](captures/) | Captures d'écran des principales étapes | **Preuves visuelles**, insérées dans ce rapport |
+
+### 0.2 Intégration continue (`integration-continue/`)
+
+| Élément | Contenu | Pourquoi le consulter |
+|---|---|---|
+| [`README.md`](../integration-continue/README.md) | Mise en place des tests, lint, lab Jenkins + SonarQube, analyse Sonar, pipeline et image | Détail technique **complet** de la partie CI, avec toutes les commandes |
+| [`Jenkinsfile`](../integration-continue/Jenkinsfile) | Pipeline CI versionnée (*pipeline as code*) | Voir exactement les étapes et les **barrières bloquantes** exécutées par Jenkins |
+| [`lab/`](../integration-continue/lab/) | `docker-compose.yml` (Jenkins, SonarQube, PostgreSQL), image Jenkins, `.env.example` | **Recréer le lab** d'intégration continue |
+| [`reports/`](../integration-continue/reports/) | Rapport de couverture des tests, rapport Trivy complet | **Résultats bruts** des tests et du scan de l'image |
+| [`sonar/`](../integration-continue/sonar/) | Exports de l'API SonarQube avant et après corrections | **Résultats bruts** de l'analyse de qualité |
+
+### 0.3 Déploiement (`deploiement/`)
+
+| Élément | Contenu | Pourquoi le consulter |
+|---|---|---|
+| [`README.md`](../deploiement/README.md) | Serveur cible, Terraform, SSH, Ansible, Docker Compose, pipeline GitLab, problèmes rencontrés | Détail technique **complet** de la partie déploiement |
+| [`terraform/`](../deploiement/terraform/) | `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, verrou de version | Infrastructure décrite en code (DNS de l'API) |
+| [`ansible/`](../deploiement/ansible/) | Inventaire, playbook, variables, modèle Caddy | Préparation **automatisée et idempotente** du serveur |
+| [`deployment/`](../deploiement/deployment/) | `docker-compose.yml`, `.env.example` | Description des services en production et de leur configuration (sans secret) |
+| [`.gitlab-ci.yml`](../deploiement/.gitlab-ci.yml) | Pipeline de déploiement | Voir comment un tag est validé, déployé, vérifié, et annulé automatiquement en cas d'échec |
+| [`reports/`](../deploiement/reports/) | Sorties de la simulation et de l'application Ansible | **Résultats bruts** de la préparation du serveur |
+
+### 0.4 Code et configuration du backend (`backend/`)
+
+| Élément | Pourquoi le consulter |
+|---|---|
+| `tests/`, `jest.config.js`, `tsconfig.test.json` | Tests unitaires et d'intégration, seuil de couverture |
+| `eslint.config.mjs`, `.prettierrc.json` | Règles de qualité et de formatage appliquées dans la pipeline |
+| `sonar-project.properties` | Paramètres de l'analyse SonarQube |
+| `Dockerfile`, `.dockerignore`, `.trivyignore.yaml` | Construction de l'image et **exceptions Trivy justifiées et datées** |
+
+---
+
 ## 1. Contexte et objectif
 
 SouverainRecrut est une API REST de gestion du recrutement, développée avec Node.js 22, Express, TypeScript et Prisma (PostgreSQL). Le périmètre est **le backend uniquement**.
@@ -30,6 +77,8 @@ SouverainRecrut est une API REST de gestion du recrutement, développée avec No
 **Objectif :** toute modification poussée sur `Dev` est automatiquement testée, analysée, conteneurisée, scannée, puis publiée sur Docker Hub sous un tag traçable. La publication n'a lieu que si tous les contrôles sont verts.
 
 ## 2. Architecture mise en œuvre
+
+> 📄 Version détaillée, avec flux, réseau, secrets et justification des choix : [`architecture.md`](architecture.md)
 
 ```
 Développeur ──git push──▶ GitHub (branche Dev)
@@ -65,6 +114,8 @@ Développeur ──git push──▶ GitHub (branche Dev)
 
 ## 3. Tests automatisés et couverture
 
+> 📄 Détail : [`integration-continue/README.md`](../integration-continue/README.md) §2 · Code : `backend/tests/` · Rapport brut : [`integration-continue/reports/`](../integration-continue/reports/)
+
 **Choix :** Jest + ts-jest (tests TypeScript typés) et supertest (requêtes HTTP réelles sur l'application Express, sans ouvrir de port). Le client Prisma est **simulé** : les tests sont rapides, déterministes et n'ont pas besoin de PostgreSQL dans la pipeline.
 
 | Niveau | Périmètre |
@@ -81,6 +132,8 @@ Rapport complet : [`integration-continue/reports/couverture-tests-2026-11-09.txt
 ![Couverture des tests](captures/tests-01-couverture.png)
 
 ## 4. Analyse SonarQube et Quality Gate
+
+> 📄 Détail et commandes : [`integration-continue/README.md`](../integration-continue/README.md) §5 · Résultats bruts : [`integration-continue/sonar/`](../integration-continue/sonar/)
 
 Configuration versionnée dans `backend/sonar-project.properties` (sources, tests, exclusions, rapport `lcov`). Quality Gate : **Sonar way** (couverture du nouveau code ≥ 80 %, aucun nouveau bug ni vulnérabilité, duplications ≤ 3 %).
 
@@ -105,6 +158,8 @@ Exports bruts de l'API : [`integration-continue/sonar/`](../integration-continue
 ![SonarQube — après corrections](captures/sonar-02-overview-apres.png)
 
 ## 5. Lab Jenkins
+
+> 📄 Fichiers du lab : [`integration-continue/lab/`](../integration-continue/lab/) · Mise en place : [`integration-continue/README.md`](../integration-continue/README.md) §4 · Secrets du lab : [`gestion-des-secrets.md`](gestion-des-secrets.md) §2.1
 
 Jenkins et SonarQube tournent en local via `integration-continue/lab/docker-compose.yml`. Le VPS de production est réservé au déploiement.
 
@@ -149,6 +204,8 @@ Les étapes sont séquentielles : **un échec arrête la pipeline, et l'image n'
 
 ## 7. Image Docker et scan Trivy
 
+> 📄 `backend/Dockerfile`, `backend/.dockerignore`, `backend/.trivyignore.yaml` (exceptions justifiées) · Rapport complet : [`integration-continue/reports/`](../integration-continue/reports/)
+
 **Dockerfile** (`backend/Dockerfile`) : build multi-stage `node:22-alpine`. L'image finale ne contient que `dist/`, les dépendances de production et le client Prisma. Autres caractéristiques :
 - utilisateur **non-root** (`node`) ;
 - **healthcheck** sur `/v1/health` ;
@@ -188,7 +245,13 @@ Aucun secret dans le dépôt, le Jenkinsfile, l'image ou les logs. Les tokens So
 
 Le token est masqué (`echo ****`) dans les logs. L'avertissement Docker sur le stockage local des identifiants (`~/.docker/config.json`) est traité par un `docker logout` systématique en fin de pipeline (bloc `post { always }`).
 
-Inventaire complet, procédures de création, de rotation et de révocation : [`gestion-des-secrets.md`](gestion-des-secrets.md)
+> 📄 **Gestionnaire des secrets : [`documentation/gestion-des-secrets.md`](gestion-des-secrets.md).** C'est le document de référence sur la sécurité des accès. Il contient :
+> - l'**inventaire** de chaque secret du projet (rôle, lieu de stockage, identifiant, statut) ;
+> - les procédures de **création**, de **rotation** et de **révocation** ;
+> - l'**incident traité** (clé de déploiement exposée puis renouvelée) ;
+> - les **contrôles avant livraison** (gitleaks, absence de `.env` réel).
+>
+> À consulter pour vérifier qu'aucune valeur sensible n'est présente dans le livrable, et pour savoir où chacune est réellement conservée.
 
 ![Secret masqué dans le log de la pipeline](captures/jenkins-05-secret-masque.png)
 
@@ -237,6 +300,8 @@ L'offre du VPS n'inclut pas d'instantanés. Le point de restauration demandé au
 
 ### 11.2 Terraform : DNS de l'API
 
+> 📄 Code : [`deploiement/terraform/`](../deploiement/terraform/) · Détail : [`deploiement/README.md`](../deploiement/README.md) §2
+
 PulseHeberg n'ayant pas de provider Terraform, le VPS est créé manuellement (cas prévu au §4.2). Terraform pilote la ressource réellement disponible : la **zone DNS `tanguydavid.fr` chez Hostinger** (provider officiel `hostinger/hostinger`). Il crée les enregistrements `A` et `AAAA` de `api.tanguydavid.fr` vers le serveur.
 
 - **Sécurité :** le token API est lu dans `HOSTINGER_API_TOKEN`, saisi sans affichage. L'état `tfstate` n'est jamais versionné.
@@ -258,6 +323,8 @@ Un compte `deploy` existait déjà sur le serveur pour un autre projet. Un **com
 
 ### 11.4 Ansible : préparation du serveur
 
+> 📄 Code : [`deploiement/ansible/`](../deploiement/ansible/) · Sorties d'exécution : [`deploiement/reports/`](../deploiement/reports/) · Détail : [`deploiement/README.md`](../deploiement/README.md) §4
+
 Le playbook répond aux exigences du §4.3 : système et dépendances, Docker Engine et Compose, service Docker actif, répertoire de déploiement. Il est conçu pour un **serveur partagé** :
 
 - **Mises à jour :** uniquement les mises à jour de sécurité automatiques. Pas d'`apt upgrade` complet ni de redémarrage, qui interrompraient les services hébergés.
@@ -278,6 +345,8 @@ Rapports : [`deploiement/reports/`](../deploiement/reports/)
 ![Idempotence : aucun changement à la 2e exécution](captures/deploy-06-ansible-idempotence.png)
 
 ### 11.5 Docker Compose et premier déploiement
+
+> 📄 Fichiers : [`deploiement/deployment/`](../deploiement/deployment/) · Pas à pas reproductible : [`procedure-deploiement.md`](procedure-deploiement.md)
 
 Fichiers : `deploiement/deployment/docker-compose.yml` et `.env.example`.
 
@@ -307,6 +376,8 @@ Il a ensuite été déployé sur le serveur avec le compte de déploiement.
 ![Documentation Swagger en production](captures/deploy-10-swagger.png)
 
 ### 11.6 Pipeline GitLab CI/CD
+
+> 📄 Pipeline : [`deploiement/.gitlab-ci.yml`](../deploiement/.gitlab-ci.yml) · Variables et secrets : [`gestion-des-secrets.md`](gestion-des-secrets.md) §2.4 · Dépannage : [`procedure-deploiement.md`](procedure-deploiement.md) §6
 
 GitLab.com (offre cloud, runners hébergés) prend en charge le **déploiement continu**, séparé de l'intégration continue faite par Jenkins :
 
@@ -371,12 +442,7 @@ Procédure détaillée et **testée** (restauration de la base vérifiée sur un
 
 ### 11.8 Documentation de référence
 
-| Document | Contenu |
-|---|---|
-| [`architecture.md`](architecture.md) | Vue d'ensemble, composants, flux du commit au déploiement, réseau, secrets, choix techniques |
-| [`procedure-deploiement.md`](procedure-deploiement.md) | Mise en place initiale, déploiement courant, vérifications, déploiement de secours, dépannage |
-| [`procedure-rollback.md`](procedure-rollback.md) | Retour automatique, redéploiement d'un tag, restauration de la base, configuration du serveur |
-| [`gestion-des-secrets.md`](gestion-des-secrets.md) | Inventaire, création, rotation, incident traité |
+La liste complète des documents, avec leur emplacement et leur intérêt, se trouve en [section 0](#0-documents-du-livrable--où-les-trouver-et-pourquoi-les-lire).
 
 ---
 
