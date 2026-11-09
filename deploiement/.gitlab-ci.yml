@@ -84,11 +84,17 @@ deploy-production:
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
     # Vérification stricte de l'empreinte du serveur (pas de StrictHostKeyChecking=no)
     - echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
-    - chmod 600 "$SSH_PRIVATE_KEY"
-    - SSH="ssh -i $SSH_PRIVATE_KEY -o BatchMode=yes $DEPLOY_USER@$DEPLOY_HOST"
+    # Copie normalisée de la clé : fins de ligne Windows retirées, saut de ligne final garanti
+    # (un copier-coller dans la variable GitLab les altère souvent)
+    - tr -d '\r' < "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+    - '[ -z "$(tail -c1 ~/.ssh/deploy_key)" ] || echo >> ~/.ssh/deploy_key'
+    - chmod 600 ~/.ssh/deploy_key
+    # Contrôle de lisibilité de la clé, sans jamais l'afficher
+    - ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null || { echo "SSH_PRIVATE_KEY illisible ; recoller la clé complète (BEGIN ... END) dans la variable"; exit 1; }
+    - SSH="ssh -i $HOME/.ssh/deploy_key -o BatchMode=yes $DEPLOY_USER@$DEPLOY_HOST"
   script:
     # Transmettre le fichier Compose versionné
-    - scp -i "$SSH_PRIVATE_KEY" -o BatchMode=yes deployment/docker-compose.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/docker-compose.yml"
+    - scp -i ~/.ssh/deploy_key -o BatchMode=yes deployment/docker-compose.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/docker-compose.yml"
 
     # Connexion Docker Hub (optionnelle : l'image est publique), token via stdin
     - |
@@ -136,7 +142,7 @@ deploy-production:
     # Ne jamais laisser les identifiants Docker Hub sur le serveur
     - |
       if [ -n "${DOCKERHUB_TOKEN:-}" ]; then
-        ssh -i "$SSH_PRIVATE_KEY" -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" "docker logout" || true
+        ssh -i ~/.ssh/deploy_key -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" "docker logout" || true
       fi
 
 # --------------------------------------------------------------------------
