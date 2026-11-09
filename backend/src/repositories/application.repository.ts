@@ -1,8 +1,4 @@
-import {
-  Application,
-  ApplicationStatus,
-  Prisma,
-} from "@prisma/client";
+import { Application, ApplicationStatus, Prisma } from "@prisma/client";
 
 import { prisma } from "../config/prisma";
 
@@ -51,9 +47,7 @@ export class ApplicationRepository {
   /**
    * Crée une candidature.
    */
-  async create(
-    data: Prisma.ApplicationCreateInput
-  ): Promise<Application> {
+  async create(data: Prisma.ApplicationCreateInput): Promise<Application> {
     return prisma.application.create({
       data,
       include: {
@@ -66,10 +60,7 @@ export class ApplicationRepository {
   /**
    * Met à jour une candidature.
    */
-  async update(
-    id: string,
-    data: Prisma.ApplicationUpdateInput
-  ): Promise<Application> {
+  async update(id: string, data: Prisma.ApplicationUpdateInput): Promise<Application> {
     return prisma.application.update({
       where: {
         id,
@@ -85,10 +76,7 @@ export class ApplicationRepository {
   /**
    * Met à jour uniquement le statut.
    */
-  async updateStatus(
-    id: string,
-    status: ApplicationStatus
-  ): Promise<Application> {
+  async updateStatus(id: string, status: ApplicationStatus): Promise<Application> {
     return prisma.application.update({
       where: {
         id,

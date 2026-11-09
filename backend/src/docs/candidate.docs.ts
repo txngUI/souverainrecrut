@@ -4,8 +4,7 @@ export const candidateDocs = {
       get: {
         tags: ["Candidates"],
         summary: "Lister les candidats",
-        description:
-          "Retourne la liste paginée des candidats.",
+        description: "Retourne la liste paginée des candidats.",
 
         security: [
           {
@@ -102,11 +101,7 @@ export const candidateDocs = {
                   },
                 },
 
-                required: [
-                  "fullName",
-                  "email",
-                  "phone",
-                ],
+                required: ["fullName", "email", "phone"],
               },
             },
           },

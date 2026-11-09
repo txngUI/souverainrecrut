@@ -7,10 +7,7 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 import { authorize } from "../middlewares/authorize.middleware";
 import { validate } from "../middlewares/validate.middleware";
 
-import {
-  createUserSchema,
-  updateUserSchema,
-} from "../validators/user.schema";
+import { createUserSchema, updateUserSchema } from "../validators/user.schema";
 
 const router = Router();
 
@@ -20,26 +17,16 @@ const router = Router();
  * ==========================================
  */
 
-router.get(
-  "/",
-  authMiddleware,
-  authorize(Role.ADMIN),
-  userController.getAll
-);
+router.get("/", authMiddleware, authorize(Role.ADMIN), userController.getAll);
 
-router.get(
-  "/:id",
-  authMiddleware,
-  authorize(Role.ADMIN),
-  userController.getById
-);
+router.get("/:id", authMiddleware, authorize(Role.ADMIN), userController.getById);
 
 router.post(
   "/",
   authMiddleware,
   authorize(Role.ADMIN),
   validate(createUserSchema),
-  userController.create
+  userController.create,
 );
 
 router.put(
@@ -47,14 +34,9 @@ router.put(
   authMiddleware,
   authorize(Role.ADMIN),
   validate(updateUserSchema),
-  userController.update
+  userController.update,
 );
 
-router.delete(
-  "/:id",
-  authMiddleware,
-  authorize(Role.ADMIN),
-  userController.delete
-);
+router.delete("/:id", authMiddleware, authorize(Role.ADMIN), userController.delete);
 
 export default router;

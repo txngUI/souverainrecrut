@@ -3,10 +3,7 @@ import { Request, Response } from "express";
 import { CandidateService } from "../services/candidate.service";
 
 import { asyncHandler } from "../utils/async-handler";
-import {
-  buildPaginationMeta,
-  getPagination,
-} from "../utils/pagination";
+import { buildPaginationMeta, getPagination } from "../utils/pagination";
 
 const candidateService = new CandidateService();
 
@@ -20,7 +17,7 @@ export class CandidateController {
   getAll = asyncHandler(async (req: Request, res: Response) => {
     const { page, limit, skip } = getPagination(
       req.query.page as string,
-      req.query.limit as string
+      req.query.limit as string,
     );
 
     const result = await candidateService.getAll(skip, limit);
@@ -28,11 +25,7 @@ export class CandidateController {
     res.status(200).json({
       success: true,
       data: result.items,
-      pagination: buildPaginationMeta(
-        page,
-        limit,
-        result.total
-      ),
+      pagination: buildPaginationMeta(page, limit, result.total),
     });
   });
 
@@ -74,10 +67,7 @@ export class CandidateController {
   update = asyncHandler(async (req: Request, res: Response) => {
     const id = String(req.params.id);
 
-    const candidate = await candidateService.update(
-      id,
-      req.body
-    );
+    const candidate = await candidateService.update(id, req.body);
 
     res.status(200).json({
       success: true,

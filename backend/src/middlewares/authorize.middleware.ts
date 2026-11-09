@@ -11,9 +11,7 @@ export const authorize =
     }
 
     if (!roles.includes(req.user.role)) {
-      return next(
-        new AppError("Accès refusé. Permissions insuffisantes.", 403)
-      );
+      return next(new AppError("Accès refusé. Permissions insuffisantes.", 403));
     }
 
     next();

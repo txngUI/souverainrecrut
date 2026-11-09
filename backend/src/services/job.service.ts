@@ -40,10 +40,7 @@ export class JobService {
   /**
    * Met à jour une offre d'emploi.
    */
-  async update(
-    id: string,
-    data: Prisma.JobUpdateInput
-  ) {
+  async update(id: string, data: Prisma.JobUpdateInput) {
     await this.getById(id);
 
     return this.repository.update(id, data);

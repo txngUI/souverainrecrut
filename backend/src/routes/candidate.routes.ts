@@ -7,10 +7,7 @@ import { authMiddleware } from "../middlewares/auth.middleware";
 import { authorize } from "../middlewares/authorize.middleware";
 import { validate } from "../middlewares/validate.middleware";
 
-import {
-  createCandidateSchema,
-  updateCandidateSchema,
-} from "../validators/candidate.schema";
+import { createCandidateSchema, updateCandidateSchema } from "../validators/candidate.schema";
 
 const router = Router();
 
@@ -20,18 +17,13 @@ const router = Router();
  * ==========================================
  */
 
-router.get(
-  "/",
-  authMiddleware,
-  authorize(Role.ADMIN, Role.RECRUITER),
-  candidateController.getAll
-);
+router.get("/", authMiddleware, authorize(Role.ADMIN, Role.RECRUITER), candidateController.getAll);
 
 router.get(
   "/:id",
   authMiddleware,
   authorize(Role.ADMIN, Role.RECRUITER),
-  candidateController.getById
+  candidateController.getById,
 );
 
 router.post(
@@ -39,7 +31,7 @@ router.post(
   authMiddleware,
   authorize(Role.ADMIN, Role.RECRUITER),
   validate(createCandidateSchema),
-  candidateController.create
+  candidateController.create,
 );
 
 router.put(
@@ -47,14 +39,9 @@ router.put(
   authMiddleware,
   authorize(Role.ADMIN, Role.RECRUITER),
   validate(updateCandidateSchema),
-  candidateController.update
+  candidateController.update,
 );
 
-router.delete(
-  "/:id",
-  authMiddleware,
-  authorize(Role.ADMIN),
-  candidateController.delete
-);
+router.delete("/:id", authMiddleware, authorize(Role.ADMIN), candidateController.delete);
 
 export default router;

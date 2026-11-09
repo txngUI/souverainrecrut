@@ -6,8 +6,7 @@ export const dashboardDocs = {
 
         summary: "Statistiques du tableau de bord",
 
-        description:
-          "Retourne les principales statistiques de l'application.",
+        description: "Retourne les principales statistiques de l'application.",
 
         security: [
           {

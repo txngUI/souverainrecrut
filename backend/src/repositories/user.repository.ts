@@ -80,10 +80,7 @@ export class UserRepository {
   /**
    * Met à jour un utilisateur.
    */
-  async update(
-    id: string,
-    data: Prisma.UserUpdateInput
-  ): Promise<User> {
+  async update(id: string, data: Prisma.UserUpdateInput): Promise<User> {
     return prisma.user.update({
       where: {
         id,

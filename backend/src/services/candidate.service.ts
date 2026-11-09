@@ -34,15 +34,10 @@ export class CandidateService {
    * Crée un candidat.
    */
   async create(data: Prisma.CandidateCreateInput) {
-    const existingCandidate = await this.repository.findByEmail(
-      data.email
-    );
+    const existingCandidate = await this.repository.findByEmail(data.email);
 
     if (existingCandidate) {
-      throw new AppError(
-        "Un candidat avec cet email existe déjà.",
-        409
-      );
+      throw new AppError("Un candidat avec cet email existe déjà.", 409);
     }
 
     return this.repository.create(data);
@@ -51,10 +46,7 @@ export class CandidateService {
   /**
    * Met à jour un candidat.
    */
-  async update(
-    id: string,
-    data: Prisma.CandidateUpdateInput
-  ) {
+  async update(id: string, data: Prisma.CandidateUpdateInput) {
     await this.getById(id);
 
     return this.repository.update(id, data);

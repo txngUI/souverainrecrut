@@ -16,10 +16,6 @@ const router = Router();
 router.post("/login", authController.login);
 
 // Profil de l'utilisateur connecté
-router.get(
-  "/me",
-  authMiddleware,
-  authController.me
-);
+router.get("/me", authMiddleware, authController.me);
 
 export default router;

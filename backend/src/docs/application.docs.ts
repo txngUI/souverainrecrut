@@ -4,8 +4,7 @@ export const applicationDocs = {
       get: {
         tags: ["Applications"],
         summary: "Lister les candidatures",
-        description:
-          "Retourne la liste paginée des candidatures.",
+        description: "Retourne la liste paginée des candidatures.",
 
         security: [
           {
@@ -111,20 +110,12 @@ export const applicationDocs = {
 
                   status: {
                     type: "string",
-                    enum: [
-                      "PENDING",
-                      "REVIEW",
-                      "ACCEPTED",
-                      "REJECTED",
-                    ],
+                    enum: ["PENDING", "REVIEW", "ACCEPTED", "REJECTED"],
                     example: "PENDING",
                   },
                 },
 
-                required: [
-                  "candidateId",
-                  "jobId",
-                ],
+                required: ["candidateId", "jobId"],
               },
             },
           },
@@ -211,12 +202,7 @@ export const applicationDocs = {
                 properties: {
                   status: {
                     type: "string",
-                    enum: [
-                      "PENDING",
-                      "REVIEW",
-                      "ACCEPTED",
-                      "REJECTED",
-                    ],
+                    enum: ["PENDING", "REVIEW", "ACCEPTED", "REJECTED"],
                     example: "REVIEW",
                   },
                 },

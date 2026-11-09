@@ -18,7 +18,7 @@ router.get(
   "/stats",
   authMiddleware,
   authorize(Role.ADMIN, Role.RECRUITER),
-  dashboardController.getStatistics
+  dashboardController.getStatistics,
 );
 
 export default router;

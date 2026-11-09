@@ -7,9 +7,7 @@ export const createCandidateSchema = z.object({
     .min(3, "Le nom complet doit contenir au moins 3 caractères.")
     .max(100, "Le nom complet ne peut pas dépasser 100 caractères."),
 
-  email: z
-    .email("Adresse email invalide.")
-    .transform((value) => value.toLowerCase()),
+  email: z.email("Adresse email invalide.").transform((value) => value.toLowerCase()),
 
   phone: z
     .string()

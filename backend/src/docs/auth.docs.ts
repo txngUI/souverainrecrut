@@ -4,8 +4,7 @@ export const authDocs = {
       post: {
         tags: ["Authentication"],
         summary: "Authentifier un utilisateur",
-        description:
-          "Permet à un utilisateur de se connecter et de récupérer un token JWT.",
+        description: "Permet à un utilisateur de se connecter et de récupérer un token JWT.",
 
         requestBody: {
           required: true,
@@ -51,8 +50,7 @@ export const authDocs = {
                       role: "RECRUITER",
                     },
 
-                    token:
-                      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                   },
                 },
               },
@@ -72,8 +70,7 @@ export const authDocs = {
 
         summary: "Profil de l'utilisateur connecté",
 
-        description:
-          "Retourne les informations de l'utilisateur authentifié.",
+        description: "Retourne les informations de l'utilisateur authentifié.",
 
         security: [
           {

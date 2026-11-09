@@ -13,5 +13,5 @@ export const env = {
 
   apiVersion: process.env.API_VERSION || "v1",
 
-  frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173"
+  frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
 };

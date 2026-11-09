@@ -31,8 +31,7 @@ export class HealthController {
   readiness = asyncHandler(async (_req: Request, res: Response) => {
     const result = await healthService.readiness();
 
-    const statusCode =
-      result.status === "READY" ? 200 : 503;
+    const statusCode = result.status === "READY" ? 200 : 503;
 
     res.status(statusCode).json({
       success: result.status === "READY",

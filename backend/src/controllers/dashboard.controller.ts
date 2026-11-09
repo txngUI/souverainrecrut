@@ -9,16 +9,14 @@ export class DashboardController {
   /**
    * GET /dashboard/stats
    */
-  getStatistics = asyncHandler(
-    async (req: Request, res: Response) => {
-      const stats = await dashboardService.getStatistics();
+  getStatistics = asyncHandler(async (req: Request, res: Response) => {
+    const stats = await dashboardService.getStatistics();
 
-      res.status(200).json({
-        success: true,
-        data: stats,
-      });
-    }
-  );
+    res.status(200).json({
+      success: true,
+      data: stats,
+    });
+  });
 }
 
 export const dashboardController = new DashboardController();

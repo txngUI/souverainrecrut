@@ -6,8 +6,7 @@ export const healthDocs = {
 
         summary: "Vérifier l'état de l'API",
 
-        description:
-          "Retourne l'état général de l'API (Liveness Probe).",
+        description: "Retourne l'état général de l'API (Liveness Probe).",
 
         responses: {
           200: {

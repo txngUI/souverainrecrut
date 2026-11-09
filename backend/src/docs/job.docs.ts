@@ -4,8 +4,7 @@ export const jobDocs = {
       get: {
         tags: ["Jobs"],
         summary: "Lister les offres d'emploi",
-        description:
-          "Retourne la liste paginée des offres d'emploi.",
+        description: "Retourne la liste paginée des offres d'emploi.",
 
         security: [
           {
@@ -95,8 +94,7 @@ export const jobDocs = {
 
                   description: {
                     type: "string",
-                    example:
-                      "Développement d'API REST avec Node.js et Prisma.",
+                    example: "Développement d'API REST avec Node.js et Prisma.",
                   },
 
                   location: {
@@ -115,13 +113,7 @@ export const jobDocs = {
                   },
                 },
 
-                required: [
-                  "title",
-                  "description",
-                  "location",
-                  "company",
-                  "recruiterId",
-                ],
+                required: ["title", "description", "location", "company", "recruiterId"],
               },
             },
           },

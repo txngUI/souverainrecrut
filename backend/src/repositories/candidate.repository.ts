@@ -50,9 +50,7 @@ export class CandidateRepository {
   /**
    * Crée un candidat.
    */
-  async create(
-    data: Prisma.CandidateCreateInput
-  ): Promise<Candidate> {
+  async create(data: Prisma.CandidateCreateInput): Promise<Candidate> {
     return prisma.candidate.create({
       data,
     });
@@ -61,10 +59,7 @@ export class CandidateRepository {
   /**
    * Met à jour un candidat.
    */
-  async update(
-    id: string,
-    data: Prisma.CandidateUpdateInput
-  ): Promise<Candidate> {
+  async update(id: string, data: Prisma.CandidateUpdateInput): Promise<Candidate> {
     return prisma.candidate.update({
       where: {
         id,

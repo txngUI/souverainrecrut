@@ -1,7 +1,4 @@
-import {
-  ApplicationStatus,
-  Prisma,
-} from "@prisma/client";
+import { ApplicationStatus, Prisma } from "@prisma/client";
 
 import { ApplicationRepository } from "../repositories/application.repository";
 import { AppError } from "../errors/app.error";
@@ -43,10 +40,7 @@ export class ApplicationService {
   /**
    * Met à jour une candidature.
    */
-  async update(
-    id: string,
-    data: Prisma.ApplicationUpdateInput
-  ) {
+  async update(id: string, data: Prisma.ApplicationUpdateInput) {
     await this.getById(id);
 
     return this.repository.update(id, data);
@@ -55,10 +49,7 @@ export class ApplicationService {
   /**
    * Met à jour le statut d'une candidature.
    */
-  async updateStatus(
-    id: string,
-    status: ApplicationStatus
-  ) {
+  async updateStatus(id: string, status: ApplicationStatus) {
     await this.getById(id);
 
     return this.repository.updateStatus(id, status);

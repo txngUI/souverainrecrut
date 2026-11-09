@@ -48,21 +48,13 @@ export class UserService {
    * Crée un utilisateur.
    */
   async create(data: Prisma.UserCreateInput): Promise<User> {
-    const existingUser = await this.repository.findByEmail(
-      data.email
-    );
+    const existingUser = await this.repository.findByEmail(data.email);
 
     if (existingUser) {
-      throw new AppError(
-        "Cet email est déjà utilisé.",
-        409
-      );
+      throw new AppError("Cet email est déjà utilisé.", 409);
     }
 
-    const hashedPassword = await bcrypt.hash(
-      data.password,
-      10
-    );
+    const hashedPassword = await bcrypt.hash(data.password, 10);
 
     return this.repository.create({
       ...data,
@@ -73,10 +65,7 @@ export class UserService {
   /**
    * Met à jour un utilisateur.
    */
-  async update(
-    id: string,
-    data: Prisma.UserUpdateInput
-  ): Promise<User> {
+  async update(id: string, data: Prisma.UserUpdateInput): Promise<User> {
     await this.getById(id);
 
     return this.repository.update(id, data);

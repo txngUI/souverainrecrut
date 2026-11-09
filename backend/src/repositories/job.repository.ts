@@ -39,9 +39,7 @@ export class JobRepository {
   /**
    * Crée une offre.
    */
-  async create(
-    data: Prisma.JobCreateInput
-  ): Promise<Job> {
+  async create(data: Prisma.JobCreateInput): Promise<Job> {
     return prisma.job.create({
       data,
     });
@@ -50,10 +48,7 @@ export class JobRepository {
   /**
    * Met à jour une offre.
    */
-  async update(
-    id: string,
-    data: Prisma.JobUpdateInput
-  ): Promise<Job> {
+  async update(id: string, data: Prisma.JobUpdateInput): Promise<Job> {
     return prisma.job.update({
       where: {
         id,

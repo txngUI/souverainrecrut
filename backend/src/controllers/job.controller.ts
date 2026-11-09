@@ -3,10 +3,7 @@ import { Request, Response } from "express";
 import { JobService } from "../services/job.service";
 
 import { asyncHandler } from "../utils/async-handler";
-import {
-  buildPaginationMeta,
-  getPagination,
-} from "../utils/pagination";
+import { buildPaginationMeta, getPagination } from "../utils/pagination";
 
 const jobService = new JobService();
 
@@ -20,7 +17,7 @@ export class JobController {
   getAll = asyncHandler(async (req: Request, res: Response) => {
     const { page, limit, skip } = getPagination(
       req.query.page as string,
-      req.query.limit as string
+      req.query.limit as string,
     );
 
     const result = await jobService.getAll(skip, limit);
@@ -28,11 +25,7 @@ export class JobController {
     res.status(200).json({
       success: true,
       data: result.items,
-      pagination: buildPaginationMeta(
-        page,
-        limit,
-        result.total
-      ),
+      pagination: buildPaginationMeta(page, limit, result.total),
     });
   });
 
@@ -74,10 +67,7 @@ export class JobController {
   update = asyncHandler(async (req: Request, res: Response) => {
     const id = String(req.params.id);
 
-    const job = await jobService.update(
-      id,
-      req.body
-    );
+    const job = await jobService.update(id, req.body);
 
     res.status(200).json({
       success: true,

@@ -12,17 +12,11 @@ export const createUserSchema = z.object({
     .min(2, "Le nom doit contenir au moins 2 caractères.")
     .max(100, "Le nom est trop long."),
 
-  email: z
-    .string()
-    .email("Adresse email invalide."),
+  email: z.string().email("Adresse email invalide."),
 
-  password: z
-    .string()
-    .min(8, "Le mot de passe doit contenir au moins 8 caractères."),
+  password: z.string().min(8, "Le mot de passe doit contenir au moins 8 caractères."),
 
-  role: z
-    .nativeEnum(Role)
-    .optional(),
+  role: z.nativeEnum(Role).optional(),
 });
 
 export const updateUserSchema = z.object({
@@ -38,17 +32,9 @@ export const updateUserSchema = z.object({
     .max(100, "Le nom est trop long.")
     .optional(),
 
-  email: z
-    .string()
-    .email("Adresse email invalide.")
-    .optional(),
+  email: z.string().email("Adresse email invalide.").optional(),
 
-  password: z
-    .string()
-    .min(8, "Le mot de passe doit contenir au moins 8 caractères.")
-    .optional(),
+  password: z.string().min(8, "Le mot de passe doit contenir au moins 8 caractères.").optional(),
 
-  role: z
-    .nativeEnum(Role)
-    .optional(),
+  role: z.nativeEnum(Role).optional(),
 });

@@ -4,8 +4,7 @@ export const userDocs = {
       get: {
         tags: ["Users"],
         summary: "Lister les utilisateurs",
-        description:
-          "Retourne la liste paginée des utilisateurs.",
+        description: "Retourne la liste paginée des utilisateurs.",
 
         security: [
           {
@@ -110,21 +109,12 @@ export const userDocs = {
 
                   role: {
                     type: "string",
-                    enum: [
-                      "ADMIN",
-                      "RECRUITER",
-                    ],
+                    enum: ["ADMIN", "RECRUITER"],
                     example: "RECRUITER",
                   },
                 },
 
-                required: [
-                  "firstName",
-                  "lastName",
-                  "email",
-                  "password",
-                  "role",
-                ],
+                required: ["firstName", "lastName", "email", "password", "role"],
               },
             },
           },
@@ -231,10 +221,7 @@ export const userDocs = {
 
                   role: {
                     type: "string",
-                    enum: [
-                      "ADMIN",
-                      "RECRUITER",
-                    ],
+                    enum: ["ADMIN", "RECRUITER"],
                   },
                 },
               },

@@ -15,7 +15,10 @@ export class AuthService {
   /**
    * Authentifie un utilisateur.
    */
-  async login(email: string, password: string): Promise<{
+  async login(
+    email: string,
+    password: string,
+  ): Promise<{
     user: Omit<User, "password">;
     token: string;
   }> {
@@ -25,10 +28,7 @@ export class AuthService {
       throw new AppError("Email ou mot de passe invalide.", 401);
     }
 
-    const passwordMatches = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const passwordMatches = await bcrypt.compare(password, user.password);
 
     if (!passwordMatches) {
       throw new AppError("Email ou mot de passe invalide.", 401);
@@ -42,7 +42,7 @@ export class AuthService {
       env.jwtSecret,
       {
         expiresIn: "1d",
-      }
+      },
     );
 
     const { password: _, ...safeUser } = user;

@@ -1,3 +1,4 @@
+import { Role } from "@prisma/client";
 import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 
@@ -6,14 +7,10 @@ import { AppError } from "../errors/app.error";
 
 interface JwtPayload {
   id: string;
-  role: string;
+  role: Role;
 }
 
-export const authMiddleware = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
+export const authMiddleware = (req: Request, res: Response, next: NextFunction): void => {
   const authorization = req.headers.authorization;
 
   if (!authorization) {
@@ -27,14 +24,11 @@ export const authMiddleware = (
   }
 
   try {
-    const decoded = jwt.verify(
-      token,
-      env.jwtSecret
-    ) as JwtPayload;
+    const decoded = jwt.verify(token, env.jwtSecret) as JwtPayload;
 
     req.user = {
       id: decoded.id,
-      role: decoded.role as any,
+      role: decoded.role,
     };
 
     next();

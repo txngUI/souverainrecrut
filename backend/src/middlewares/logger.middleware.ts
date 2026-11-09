@@ -6,7 +6,4 @@ import { env } from "../config/env";
  * En développement : format "dev"
  * En production : format "combined"
  */
-export const loggerMiddleware =
-  env.nodeEnv === "production"
-    ? morgan("combined")
-    : morgan("dev");
+export const loggerMiddleware = env.nodeEnv === "production" ? morgan("combined") : morgan("dev");
