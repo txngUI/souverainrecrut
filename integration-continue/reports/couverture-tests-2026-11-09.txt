@@ -60,4 +60,4 @@ All files                   |     100 |      100 |     100 |     100 |
   user.schema.ts            |     100 |      100 |     100 |     100 |                   
 ----------------------------|---------|----------|---------|---------|-------------------
 Test Suites: 19 passed, 19 total
-Tests:       109 passed, 109 total
+Tests:       110 passed, 110 total

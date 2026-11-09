@@ -11,8 +11,8 @@ Le code testé se trouve dans `backend/`. Ce dossier contient la documentation, 
 | Lab local : SonarQube + Jenkins (Docker Compose, `lab/`) | ✅ |
 | 3.3 Analyse SonarQube + Quality Gate | ✅ |
 | VM Ubuntu Server (VMware) — cible de déploiement, jour 2 | ⏳ |
-| 3.4 / 3.5 Jenkins + Jenkinsfile | ⏳ |
-| 3.6 Image Docker, Trivy, Docker Hub | ⏳ |
+| 3.4 / 3.5 Jenkins + Jenkinsfile | ✅ |
+| 3.6 Image Docker, Trivy, Docker Hub | ✅ |
 
 ---
 
@@ -75,7 +75,7 @@ Un **seuil minimal de 80 %** est configuré dans `jest.config.js` (`coverageThre
 
 ### 2.5 Résultat
 
-**19 suites, 109 tests, couverture de 100 %** (instructions, branches, fonctions, lignes).
+**19 suites, 110 tests, couverture de 100 %** (instructions, branches, fonctions, lignes).
 Le détail est dans [`reports/couverture-tests-2026-11-09.txt`](reports/couverture-tests-2026-11-09.txt).
 
 Fichiers exclus de la couverture, car ce n'est pas de la logique applicative :
