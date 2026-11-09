@@ -1,0 +1,7 @@
+# Faux positifs gitleaks vérifiés manuellement (voir documentation/gestion-des-secrets.md §5) :
+# - integration-continue/sonar/issues-initial.json : identifiants/hash d'issues SonarQube
+# - backend/src/docs/auth.docs.ts : exemple Swagger d'en-tête JWT tronqué, sans signature
+7fa9454ab2ed0e0aa54a6855fd384075740ef4a9:integration-continue/sonar/issues-initial.json:generic-api-key:1
+7fa9454ab2ed0e0aa54a6855fd384075740ef4a9:integration-continue/sonar/issues-initial.json:generic-api-key:1
+7fa9454ab2ed0e0aa54a6855fd384075740ef4a9:integration-continue/sonar/issues-initial.json:generic-api-key:1
+83910e04396ab3ad07588b71a69c702c26e7ec08:backend/src/docs/auth.docs.ts:generic-api-key:53

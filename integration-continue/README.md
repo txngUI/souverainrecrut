@@ -152,19 +152,36 @@ docker run --rm --network souverainrecrut-ci_default \
 
 Exports bruts de l'API SonarQube : dossier [`sonar/`](sonar/) (`*-initial.json` / `*-apres.json`).
 
-## 6. Fichiers ajoutés ou modifiés
+## 6. Pipeline Jenkins et image Docker (§3.4 à §3.6)
+
+- **Jenkinsfile :** [`Jenkinsfile`](Jenkinsfile). Job Jenkins de type *Pipeline script from SCM*, branche `*/Dev`, Script Path `integration-continue/Jenkinsfile`.
+- **Prérequis Jenkins :** credentials `sonar-token` et `dockerhub`, serveur SonarQube `sonarqube`, scanner `sonar-scanner`, webhook SonarQube vers `http://jenkins:8080/sonarqube-webhook/`.
+- **Image :** `backend/Dockerfile` (Node 22 Alpine, multi-stage, non-root, healthcheck, sans npm), `backend/.dockerignore`.
+- **Trivy :** blocage sur HIGH/CRITICAL corrigeable ; exceptions justifiées et datées dans `backend/.trivyignore.yaml`. Rapport : [`reports/trivy-1.0.0-7fa9454.txt`](reports/trivy-1.0.0-7fa9454.txt).
+- **Tags publiés :** `iamkrugs/souverainrecrut-backend:<version>-<sha7>` et `:sha-<sha7>`.
+
+Le rapport rédigé, avec les captures, se trouve dans [`documentation/rapport-final.md`](../documentation/rapport-final.md).
+
+## 7. Fichiers ajoutés ou modifiés
 
 ```
+integration-continue/
+├── Jenkinsfile
+├── README.md
+├── lab/                    # docker-compose Jenkins + SonarQube, image Jenkins
+├── reports/                # couverture des tests, rapport Trivy
+└── sonar/                  # exports API SonarQube (avant / après)
 backend/
+├── Dockerfile              # Node 22, multi-stage, non-root
+├── .dockerignore
+├── .trivyignore.yaml       # exceptions Trivy justifiées et datées
+├── sonar-project.properties
 ├── jest.config.js          # config Jest + seuil de couverture
 ├── tsconfig.test.json      # config TS dédiée aux tests (n'impacte pas le build)
-├── eslint.config.mjs
-├── .prettierrc.json
-├── .prettierignore
-├── package.json            # scripts test, test:coverage, lint, format…
-└── tests/
-    ├── setup-env.ts
-    ├── helpers/            # faux Prisma, génération de token JWT
-    ├── unit/               # utils, middlewares, services, config
-    └── integration/        # routes HTTP via supertest
+├── eslint.config.mjs, .prettierrc.json, .prettierignore
+└── tests/                  # unit/, integration/, helpers/
+documentation/
+├── rapport-final.md
+├── gestion-des-secrets.md
+└── captures/
 ```

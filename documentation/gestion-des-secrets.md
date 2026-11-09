@@ -23,12 +23,13 @@ Statut : ⏳ = à créer · ✅ = créé et stocké
 
 | Secret | Utilisé par | Stocké dans | Identifiant de référence | Type | Statut |
 |---|---|---|---|---|---|
-| Token d'accès Docker Hub | Jenkins, étape *Publish* (`docker push`) | Credentials Jenkins | `dockerhub` | Username with password (utilisateur + token) | ⏳ |
-| Token d'analyse SonarQube | Jenkins, étape *Qualité* | Credentials Jenkins + config du serveur SonarQube dans Jenkins | `sonar-token` | Secret text | ⏳ |
-| Mot de passe admin SonarQube | Administration de SonarQube | Gestionnaire de mots de passe personnel | — | — | ⏳ (le mot de passe par défaut `admin` est changé au 1er login) |
-| Mot de passe admin Jenkins | Administration de Jenkins | Gestionnaire de mots de passe personnel | — | — | ⏳ (le mot de passe initial `initialAdminPassword` n'est plus utilisé après le setup) |
-| Mot de passe de la base PostgreSQL de SonarQube | Conteneurs `sonarqube` / `sonar-db` | Fichier `.env` sur la VM, non versionné | `SONAR_DB_PASSWORD` | Variable d'environnement | ⏳ |
-| Token GitHub (si dépôt privé) | Jenkins, étape *Checkout* | Credentials Jenkins | `github` | Username with password (PAT *fine-grained*, lecture seule) | ⏳ / non nécessaire si le fork est public |
+| Token d'accès Docker Hub | Jenkins, étape *Publish* (`docker push`) | Credentials Jenkins | `dockerhub` | Username with password (utilisateur + token, *Read & Write*, expiration 30 j) | ✅ |
+| Token d'analyse SonarQube | Jenkins, étape *SonarQube* | Credentials Jenkins + config du serveur SonarQube dans Jenkins | `sonar-token` | Secret text (Global Analysis Token, expiration 30 j) | ✅ |
+| Mot de passe admin SonarQube | Administration de SonarQube | Gestionnaire de mots de passe personnel | — | — | ✅ (mot de passe par défaut `admin` changé au 1er login) |
+| Mot de passe admin Jenkins | Administration de Jenkins | Gestionnaire de mots de passe personnel | — | — | ⏳ à remplacer : le compte `admin` utilise encore le mot de passe initial (`initialAdminPassword`) |
+| Token d'analyse locale SonarQube (`analyse-locale`) | Analyses manuelles depuis le poste | Saisi à la demande (`read -rs`), jamais écrit sur disque | `SONAR_TOKEN` (shell) | Project Analysis Token, expiration 30 j | ✅ |
+| Mot de passe de la base PostgreSQL de SonarQube | Conteneurs `sonarqube` / `sonar-db` | `integration-continue/lab/.env`, non versionné (généré par `openssl rand -hex 16`) | `SONAR_DB_PASSWORD` | Variable d'environnement | ✅ |
+| Token GitHub (si dépôt privé) | Jenkins, étape *Checkout* | Credentials Jenkins | `github` | Username with password (PAT *fine-grained*, lecture seule) | Non nécessaire : le fork est public |
 
 ### 2.2 Application Backend
 
@@ -78,6 +79,13 @@ docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest detect --source /rep
 # Aucun fichier .env réel suivi par Git (seuls les .env.example doivent sortir)
 git ls-files | grep -E '(^|/)\.env' 
 ```
+
+**Résultat au 09/11/2026 :** `no leaks found` sur les 8 commits. Les 4 alertes du premier scan étaient des faux positifs, vérifiés un par un et déclarés dans `.gitleaksignore` à la racine du dépôt :
+
+- identifiants et hash d'issues dans `integration-continue/sonar/issues-initial.json` ;
+- exemple Swagger d'en-tête JWT tronqué, sans signature, dans `backend/src/docs/auth.docs.ts`.
+
+Seuls des `.env.example` sont suivis par Git.
 
 Preuves jointes au livrable dans `documentation/captures/` :
 
