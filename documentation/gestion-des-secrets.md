@@ -53,12 +53,12 @@ Statut : ⏳ = à créer · ✅ = créé et stocké
 
 | Secret | Utilisé par | Stocké dans | Variable GitLab | Options | Statut |
 |---|---|---|---|---|---|
-| Clé privée SSH de déploiement | Pipeline GitLab → compte `souverainrecrut` | Variables CI/CD GitLab | `SSH_PRIVATE_KEY` | Type *File*, Protected | ⏳ |
-| Empreinte SSH du serveur | Vérification stricte de l'hôte (anti-usurpation) | Variables CI/CD GitLab | `SSH_KNOWN_HOSTS` | Protected (non secret) | ⏳ |
-| Adresse du serveur | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_HOST` | Protected (non secret) | ⏳ |
-| Utilisateur SSH | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_USER` | Protected (non secret) | ⏳ |
-| Utilisateur Docker Hub | Pipeline GitLab (`docker login` sur le serveur) | Variables CI/CD GitLab | `DOCKERHUB_USER` | Protected — optionnel : l'image est publique | ⏳ |
-| Token Docker Hub (lecture seule) | Pipeline GitLab (`docker pull`) | Variables CI/CD GitLab | `DOCKERHUB_TOKEN` | Masked, Protected — optionnel ; `docker logout` systématique après le job | ⏳ |
+| Clé privée SSH de déploiement | Pipeline GitLab → compte `souverainrecrut` | Variables CI/CD GitLab | `SSH_PRIVATE_KEY` | Type *File*, Protected | ✅ |
+| Empreinte SSH du serveur | Vérification stricte de l'hôte (anti-usurpation) | Variables CI/CD GitLab | `SSH_KNOWN_HOSTS` | Protected (non secret) | ✅ |
+| Adresse du serveur | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_HOST` | Protected (non secret) | ✅ |
+| Utilisateur SSH | Pipeline GitLab | Variables CI/CD GitLab | `DEPLOY_USER` | Protected (non secret) | ✅ |
+| Utilisateur Docker Hub | Pipeline GitLab (`docker login` sur le serveur) | Variables CI/CD GitLab | `DOCKERHUB_USER` | Non créée : l'image est publique | — |
+| Token Docker Hub (lecture seule) | Pipeline GitLab (`docker pull`) | Variables CI/CD GitLab | `DOCKERHUB_TOKEN` | Non créée : l'image est publique | — |
 
 > **Secrets applicatifs** (`JWT_SECRET`, `POSTGRES_PASSWORD`) : ils ne sont **pas** copiés dans GitLab. Ils sont générés une seule fois sur le serveur (`openssl rand`), restent dans `/opt/souverainrecrut/.env` (droits 600), et la pipeline ne modifie que `BACKEND_TAG`. Un secret qui n'est pas dupliqué ne peut pas fuiter par la CI. Cela évite aussi un écart de mot de passe avec la base déjà initialisée.
 

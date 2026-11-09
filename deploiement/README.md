@@ -10,7 +10,7 @@ L'image déployée est celle publiée par Jenkins sur Docker Hub (`iamkrugs/souv
 | Clé SSH de déploiement + utilisateur dédié `souverainrecrut` | ✅ |
 | 4.3 Ansible : préparation du serveur | ✅ |
 | 5.2 Docker Compose : API + PostgreSQL + exposition HTTPS via Caddy | ✅ déployé sur https://api.tanguydavid.fr |
-| 4.4 / 5.3 Pipeline GitLab CI/CD | ✅ écrite et testée localement · ⏳ projet GitLab |
+| 4.4 / 5.3 Pipeline GitLab CI/CD | ✅ projet GitLab créé et alimenté · ⏳ variables et premier déploiement |
 | Procédures de déploiement et de rollback | ⏳ |
 
 ---
@@ -162,7 +162,14 @@ Fichiers : [`deployment/docker-compose.yml`](deployment/docker-compose.yml), [`d
 
 ## 6. Pipeline GitLab CI/CD (§4.4 et §5.3)
 
-Fichier : [`.gitlab-ci.yml`](.gitlab-ci.yml). Il s'exécute sur GitLab.com (runners hébergés), dans un projet dédié `souverainrecrut-deploiement` qui contient ce dossier `deploiement/`.
+Fichier : [`.gitlab-ci.yml`](.gitlab-ci.yml). Il s'exécute sur GitLab.com (runners hébergés), dans le projet privé **`tanguy-cicd/souverainrecrut-deploiement`**.
+
+Ce dossier `deploiement/` est publié à la racine du projet GitLab depuis le dépôt GitHub. Le dépôt GitHub reste la source unique :
+
+```bash
+git remote add gitlab git@gitlab.com:tanguy-cicd/souverainrecrut-deploiement.git   # une seule fois
+git subtree push --prefix deploiement gitlab main                                   # à chaque mise à jour
+```
 
 | Job | Rôle |
 |---|---|
@@ -182,7 +189,7 @@ Fichier : [`.gitlab-ci.yml`](.gitlab-ci.yml). Il s'exécute sur GitLab.com (runn
 | `SSH_KNOWN_HOSTS` | Protected | Sortie de `ssh-keyscan 45.155.170.40` (vérification stricte de l'hôte) |
 | `DEPLOY_HOST` | Protected | `45.155.170.40` |
 | `DEPLOY_USER` | Protected | `souverainrecrut` |
-| `DOCKERHUB_USER` / `DOCKERHUB_TOKEN` | Protected (+ Masked pour le token) | Optionnel, car l'image est publique ; token en lecture seule ; `docker logout` après le job |
+| `DOCKERHUB_USER` / `DOCKERHUB_TOKEN` | — | **Non créées** : l'image est publique (la connexion est sautée si elles sont absentes). À ajouter, avec un token en lecture seule, si l'image devient privée. |
 
 Les secrets applicatifs (`JWT_SECRET`, `POSTGRES_PASSWORD`) **ne sont pas** dans GitLab : ils restent dans `/opt/souverainrecrut/.env` sur le serveur, et la pipeline ne modifie que `BACKEND_TAG`.
 

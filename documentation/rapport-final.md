@@ -313,7 +313,17 @@ GitLab.com (offre cloud, runners hébergés) prend en charge le **déploiement c
 - Jenkins s'arrête à l'image publiée sur Docker Hub ;
 - GitLab part d'un **tag d'image** et le met en production.
 
-Le projet GitLab dédié (`souverainrecrut-deploiement`) contient le dossier `deploiement/`.
+**Mise en place du projet GitLab :**
+
+| Étape | Réalisation |
+|---|---|
+| Compte et espace | Compte GitLab.com (offre Free, runners hébergés) ; groupe `tanguy-cicd` |
+| Projet dédié au déploiement (§4.4) | `souverainrecrut-deploiement`, **privé** ; branche `main` protégée |
+| Authentification Git | Clé SSH personnelle ajoutée au profil GitLab ; empreinte de `gitlab.com` vérifiée (`SHA256:eUXGGm1Y…CLB8`) |
+| Contenu | Le dossier `deploiement/` du dépôt GitHub est publié à la racine du projet GitLab avec `git subtree`. Le dépôt GitHub reste la **source unique**, et `.gitlab-ci.yml` est à la racine côté GitLab. |
+| Contrôle avant publication | Scan gitleaks du contenu commité : `no leaks found` ; état Terraform ignoré par Git |
+
+Pousser n'exécute rien : la pipeline se déclenche **uniquement manuellement** (règle `workflow`).
 
 | Job | Rôle |
 |---|---|
@@ -327,7 +337,9 @@ Déclenchement manuel, avec le tag en paramètre. `resource_group` garantit un s
 - la clé SSH (variable de type *File*, protégée) ;
 - l'empreinte du serveur ;
 - l'adresse et l'utilisateur ;
-- les identifiants Docker Hub (optionnels, car l'image est publique ; `docker logout` systématique).
+- les identifiants Docker Hub : **volontairement non créés**. L'image est publique, et la pipeline saute la connexion si ces variables sont absentes. Un secret en moins dans la CI.
+
+Les 4 variables créées (`SSH_PRIVATE_KEY` de type *File*, `SSH_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_USER`) sont toutes *Protected* : elles ne sont transmises qu'à la branche protégée `main`. L'empreinte du serveur a été comparée à celle déjà connue du poste d'administration (`SHA256:cHakt12…dikx1Q`).
 
 Les secrets applicatifs **restent uniquement sur le serveur** : la pipeline ne modifie que `BACKEND_TAG`.
 
@@ -478,3 +490,21 @@ curl -s https://api.tanguydavid.fr/v1/health
 curl -s https://api.tanguydavid.fr/v1/ready
 ```
 
+### A.11 Publication vers GitLab (racine du dépôt)
+
+```bash
+ssh -T git@gitlab.com                                   # → Welcome to GitLab, @txngUI!
+git add deploiement documentation
+git commit -m "deploiement: Terraform DNS, Ansible, Docker Compose, pipeline GitLab CI/CD, rapport jour 2"
+git push origin Dev                                     # GitHub : dépôt de livrable
+git remote add gitlab git@gitlab.com:tanguy-cicd/souverainrecrut-deploiement.git
+git subtree push --prefix deploiement gitlab main       # GitLab : dossier deploiement/ à la racine
+```
+
+### A.12 Valeurs non secrètes des variables GitLab
+
+```bash
+ssh-keyscan -t ed25519 45.155.170.40                    # → SSH_KNOWN_HOSTS
+ssh-keyscan -t ed25519 45.155.170.40 | ssh-keygen -lf - # contrôle : SHA256:cHakt12…dikx1Q
+ssh-keygen -F 45.155.170.40 | ssh-keygen -lf -          # identique à l'empreinte déjà connue du poste
+```

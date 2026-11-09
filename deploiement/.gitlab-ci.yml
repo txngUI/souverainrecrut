@@ -62,7 +62,7 @@ validate-tag:
         echo "L'image $BACKEND_IMAGE:$BACKEND_TAG n'existe pas sur Docker Hub (HTTP $STATUS)"
         exit 1
       fi
-    - echo "Image validée : $BACKEND_IMAGE:$BACKEND_TAG"
+    - 'echo "Image validée : $BACKEND_IMAGE:$BACKEND_TAG"'
 
 # --------------------------------------------------------------------------
 # 2. Déployer sur le serveur
