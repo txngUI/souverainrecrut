@@ -4,7 +4,7 @@
 # Déploie sur le serveur de production une image DÉJÀ publiée par Jenkins
 # sur Docker Hub. Aucune image n'est reconstruite ici.
 #
-# Lancement : Build > Pipelines > Run pipeline, variable BACKEND_TAG
+# Lancement : Build > Pipelines > New pipeline, champ « backend_tag »
 # (ex. 1.0.0-7fa9454). Rollback : relancer avec le tag précédent, ou
 # Operate > Environments > production > Re-deploy sur un déploiement antérieur.
 #
@@ -20,10 +20,15 @@
 # /opt/souverainrecrut/.env sur le serveur : la pipeline ne modifie que BACKEND_TAG.
 # ==========================================================================
 
+spec:
+  inputs:
+    backend_tag:
+      description: "Tag de l'image à déployer, au format <version>-<sha7> (ex. 1.0.0-7fa9454). Le tag est contrôlé par le job validate-tag."
+      default: ""
+---
 variables:
-  BACKEND_TAG:
-    value: ""
-    description: "Tag de l'image à déployer, au format <version>-<sha7> (ex. 1.0.0-7fa9454)"
+  # Valeur saisie au lancement de la pipeline (input "backend_tag")
+  BACKEND_TAG: $[[ inputs.backend_tag ]]
   BACKEND_IMAGE: iamkrugs/souverainrecrut-backend
   DEPLOY_DIR: /opt/souverainrecrut
   API_URL: https://api.tanguydavid.fr

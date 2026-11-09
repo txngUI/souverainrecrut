@@ -177,7 +177,7 @@ git subtree push --prefix deploiement gitlab main                               
 | `deploy-production` | `scp` du fichier Compose ; `pg_dump` de la base (5 sauvegardes conservées) ; mise à jour de `BACKEND_TAG` ; `docker compose pull` puis `up -d --wait` ; **retour automatique au tag précédent en cas d'échec** ; journal `deploy-history.log` |
 | `verify-api` | `GET https://api.tanguydavid.fr/v1/ready` doit répondre `READY` (10 tentatives) |
 
-- **Déclenchement :** manuel uniquement (*Run pipeline* avec `BACKEND_TAG`, ou appel API).
+- **Déclenchement :** manuel uniquement (*New pipeline*, champ **`backend_tag`**, ou appel API). Le tag est un **input** de pipeline (`spec:inputs`), le mécanisme recommandé par GitLab à la place des variables saisies à la main.
 - **Concurrence :** `resource_group: production`, donc un seul déploiement à la fois.
 - **Historique :** environnement GitLab `production`, avec bouton *Re-deploy* sur un déploiement antérieur.
 

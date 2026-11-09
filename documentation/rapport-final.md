@@ -331,7 +331,7 @@ Pousser n'exécute rien : la pipeline se déclenche **uniquement manuellement** 
 | `deploy-production` | Envoie le fichier Compose en SSH (empreinte du serveur vérifiée) ; **sauvegarde la base** (`pg_dump`, 5 dernières conservées) ; met à jour `BACKEND_TAG` ; lance `pull` et `up --wait`. **En cas d'échec, revient automatiquement au tag précédent.** Journalise dans `deploy-history.log`. |
 | `verify-api` | Vérifie que `/v1/ready` répond `READY` |
 
-Déclenchement manuel, avec le tag en paramètre. `resource_group` garantit un seul déploiement à la fois. L'environnement GitLab `production` conserve l'historique des déploiements.
+Déclenchement manuel : le tag à déployer est saisi dans le formulaire de lancement, via un **input** de pipeline (`spec:inputs`, mécanisme recommandé par GitLab à la place des variables libres). `resource_group` garantit un seul déploiement à la fois. L'environnement GitLab `production` conserve l'historique des déploiements.
 
 **Secrets :** GitLab ne reçoit que ce que liste le §4.4 :
 - la clé SSH (variable de type *File*, protégée) ;
