@@ -107,6 +107,8 @@ deploy-production:
     - |
       $SSH "TAG='$BACKEND_TAG' PIPELINE='$CI_PIPELINE_ID' DIR='$DEPLOY_DIR' sh -s" <<'REMOTE'
       set -eu
+      # Sauvegardes et fichiers créés lisibles uniquement par le compte de déploiement
+      umask 077
       cd "$DIR"
       test -f .env || { echo ".env absent sur le serveur"; exit 1; }
       mkdir -p backups

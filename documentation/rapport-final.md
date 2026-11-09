@@ -343,6 +343,18 @@ Les 4 variables créées (`SSH_PRIVATE_KEY` de type *File*, `SSH_KNOWN_HOSTS`, `
 
 Les secrets applicatifs **restent uniquement sur le serveur** : la pipeline ne modifie que `BACKEND_TAG`.
 
+**Résultat du premier déploiement par la pipeline** (pipeline 3045841142, tag `1.0.0-7fa9454`) :
+- les 3 jobs sont verts ;
+- la base a été sauvegardée avant le déploiement ;
+- le déploiement est journalisé sur le serveur ;
+- l'API répond `READY / CONNECTED`.
+
+**Difficultés rencontrées et résolues :**
+- syntaxe YAML d'une ligne de script ;
+- passage du tag en *input* de pipeline (`spec:inputs`), car les variables manuelles sont désactivées par défaut ;
+- format de la clé collée dans la variable : la pipeline normalise désormais la clé et vérifie sa lisibilité avant usage ;
+- **clé privée exposée** dans une capture pendant le diagnostic : elle a été traitée comme un incident, avec **rotation immédiate**. Ansible gère `authorized_keys` en mode exclusif, ce qui a révoqué automatiquement l'ancienne clé. L'empreinte de la clé autorisée a été vérifiée et le redéploiement a réussi (`gestion-des-secrets.md` §4.1).
+
 ![Variables CI/CD GitLab (valeurs masquées)](captures/gitlab-01-variables.png)
 ![Pipeline de déploiement réussie](captures/gitlab-02-pipeline.png)
 ![Historique des déploiements (environnement production)](captures/gitlab-03-environnement.png)
@@ -507,4 +519,15 @@ git subtree push --prefix deploiement gitlab main       # GitLab : dossier deplo
 ssh-keyscan -t ed25519 45.155.170.40                    # → SSH_KNOWN_HOSTS
 ssh-keyscan -t ed25519 45.155.170.40 | ssh-keygen -lf - # contrôle : SHA256:cHakt12…dikx1Q
 ssh-keygen -F 45.155.170.40 | ssh-keygen -lf -          # identique à l'empreinte déjà connue du poste
+```
+
+### A.13 Rotation de la clé de déploiement et lancement de la pipeline
+
+```bash
+ssh-keygen -t ed25519 -C "deploy-souverainrecrut" -f ~/.ssh/souverainrecrut_deploy -N ""   # nouvelle clé
+cd deploiement/ansible && ansible-playbook playbook.yml --diff                           # ancienne retirée, nouvelle ajoutée
+ssh -i ~/.ssh/souverainrecrut_deploy souverainrecrut@45.155.170.40 whoami                # vérification
+# GitLab : Settings > CI/CD > Variables > SSH_PRIVATE_KEY remplacée (sans capture de la valeur)
+# GitLab : Build > Pipelines > New pipeline > input backend_tag = 1.0.0-7fa9454
+git subtree push --prefix deploiement gitlab main                                         # à chaque modification de deploiement/
 ```

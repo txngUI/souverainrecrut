@@ -38,7 +38,7 @@ Statut : ⏳ = à créer · ✅ = créé et stocké
 | Clé de signature JWT | API (signature/vérification des tokens) | `/opt/souverainrecrut/.env` sur le serveur (droits 600, non versionné) | `JWT_SECRET` | ⏳ |
 | Chaîne de connexion PostgreSQL (contient le mot de passe) | API + Prisma (migrations) | Construite par `docker-compose.yml` à partir de `POSTGRES_PASSWORD` | `DATABASE_URL` | ⏳ |
 | Mot de passe PostgreSQL applicatif | Conteneurs `db`, `migrate`, `api` | `/opt/souverainrecrut/.env` sur le serveur (droits 600, non versionné) | `POSTGRES_PASSWORD` | ⏳ |
-| Clé SSH de déploiement | GitLab CI → compte `souverainrecrut` | Privée : poste de l'administrateur puis variable GitLab ; publique : `authorized_keys` (posée par Ansible) | `~/.ssh/souverainrecrut_deploy` | ✅ générée |
+| Clé SSH de déploiement | GitLab CI → compte `souverainrecrut` | Privée : poste de l'administrateur puis variable GitLab ; publique : `authorized_keys` (posée par Ansible, mode exclusif) | `~/.ssh/souverainrecrut_deploy` | ✅ (rotation effectuée le 09/11, voir §4.1) |
 
 > Pour les tests automatisés, un `JWT_SECRET` **factice** (`test-secret`) est défini dans `backend/tests/setup-env.ts`. Il ne sert qu'aux tests et n'est utilisé dans aucun environnement réel.
 
@@ -79,6 +79,16 @@ Statut : ⏳ = à créer · ✅ = créé et stocké
 | Secret exposé (commit, log, capture d'écran…) | 1) **Révoquer immédiatement** dans l'outil d'origine. 2) Générer un nouveau secret. 3) Mettre à jour Jenkins ou GitLab. 4) Relancer la pipeline. Supprimer le commit ne suffit pas : l'historique Git conserve la valeur. |
 | Fin du projet / après correction | Révoquer les tokens Docker Hub, SonarQube et GitHub, ainsi que la clé SSH de déploiement. |
 | Expiration d'un token | Générer un nouveau token, mettre à jour le credential (même identifiant), puis relancer un build pour vérifier. |
+
+### 4.1 Incident traité : rotation de la clé de déploiement (09/11/2026)
+
+| Étape | Action |
+|---|---|
+| Constat | Le contenu de la variable GitLab `SSH_PRIVATE_KEY` a été affiché puis capturé à l'écran pendant le diagnostic d'une erreur de format : la clé est considérée comme **exposée** |
+| Révocation | Le playbook Ansible gère `authorized_keys` du compte `souverainrecrut` en mode **exclusif** : seule la clé courante est conservée |
+| Rotation | Nouvelle clé générée (`ssh-keygen -t ed25519`), playbook rejoué (ancienne clé retirée, nouvelle ajoutée), variable GitLab remplacée |
+| Vérification | Une seule clé autorisée sur le serveur, d'empreinte identique à la nouvelle clé locale (`SHA256:dvwQGb…azXPI`) ; déploiement par la pipeline réussi avec la nouvelle clé ; compte `deploy` d'un autre projet non affecté |
+| Mesure préventive | Ne jamais révéler une variable sensible pour une capture : les captures montrent la **liste** des variables, sans les valeurs |
 
 ## 5. Vérification avant livraison
 

@@ -97,6 +97,9 @@
         key: "{{ lookup('ansible.builtin.file', deploy_pubkey_file) }}"
         # Chemin explicite : permet la simulation (--check) avant création de l'utilisateur
         path: "/home/{{ deploy_user }}/.ssh/authorized_keys"
+        # Compte dédié : seule la clé courante est autorisée. Une rotation de clé
+        # retire automatiquement l'ancienne (révocation).
+        exclusive: true
         state: present
 
     - name: Créer le répertoire de déploiement

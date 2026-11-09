@@ -10,7 +10,7 @@ L'image déployée est celle publiée par Jenkins sur Docker Hub (`iamkrugs/souv
 | Clé SSH de déploiement + utilisateur dédié `souverainrecrut` | ✅ |
 | 4.3 Ansible : préparation du serveur | ✅ |
 | 5.2 Docker Compose : API + PostgreSQL + exposition HTTPS via Caddy | ✅ déployé sur https://api.tanguydavid.fr |
-| 4.4 / 5.3 Pipeline GitLab CI/CD | ✅ projet GitLab créé et alimenté · ⏳ variables et premier déploiement |
+| 4.4 / 5.3 Pipeline GitLab CI/CD | ✅ premier déploiement réussi (pipeline 3045841142) |
 | Procédures de déploiement et de rollback | ⏳ |
 
 ---
@@ -197,3 +197,19 @@ Les secrets applicatifs (`JWT_SECRET`, `POSTGRES_PASSWORD`) **ne sont pas** dans
 - `up --wait` réussit au premier déploiement comme au redéploiement ;
 - `pg_dump` est fonctionnel ;
 - un tag défaillant fait échouer `up --wait`, ce qui déclenche le retour au tag précédent.
+
+**Premier déploiement par la pipeline** (`backend_tag` = `1.0.0-7fa9454`) :
+- les 3 jobs sont verts ;
+- `deploy-history.log` : `1.0.0-7fa9454 -> 1.0.0-7fa9454 OK (pipeline 3045841142)` ;
+- sauvegarde `backups/db-20261109-154240-avant-1.0.0-7fa9454.sql.gz` créée ;
+- API `READY / CONNECTED`.
+
+**Problèmes rencontrés et corrections :**
+
+| Symptôme | Cause | Correction |
+|---|---|---|
+| Pipeline en `error` sans étape | Compte GitLab non vérifié (runners partagés) | Vérification d'identité du compte |
+| `script config should be a string` | Une ligne `echo "… : …"` interprétée par YAML comme une paire clé/valeur | Ligne mise entre guillemets ; contrôle automatique de toutes les lignes de script |
+| Champ du tag absent du formulaire | Les variables saisies au lancement sont désactivées par défaut sur les projets récents | Tag passé en **input** de pipeline (`spec:inputs`) |
+| `Load key …: error in libcrypto` | Clé collée dans la variable sans saut de ligne final et/ou avec des fins de ligne Windows | La pipeline normalise la clé et vérifie sa lisibilité (`ssh-keygen -y`) avant de se connecter |
+| Clé privée visible dans une capture | Valeur de variable révélée pendant le diagnostic | **Rotation** de la clé (voir `documentation/gestion-des-secrets.md` §4.1) ; `authorized_keys` géré en mode exclusif par Ansible |
