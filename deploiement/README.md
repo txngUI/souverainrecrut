@@ -162,7 +162,7 @@ Fichiers : [`deployment/docker-compose.yml`](deployment/docker-compose.yml), [`d
 
 ## 6. Pipeline GitLab CI/CD (§4.4 et §5.3)
 
-Fichier : [`.gitlab-ci.yml`](.gitlab-ci.yml). Il s'exécute sur GitLab.com (runners hébergés), dans le projet privé **`tanguy-cicd/souverainrecrut-deploiement`**.
+Fichier : [`.gitlab-ci.yml`](.gitlab-ci.yml). Il s'exécute sur GitLab.com (runners hébergés), dans le projet privé [**`tanguy-cicd/souverainrecrut-deploiement`**](https://gitlab.com/tanguy-cicd/souverainrecrut-deploiement) (accès sur invitation, rôle *Reporter*).
 
 Ce dossier `deploiement/` est publié à la racine du projet GitLab depuis le dépôt GitHub. Le dépôt GitHub reste la source unique :
 

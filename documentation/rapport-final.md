@@ -2,7 +2,9 @@
 
 **Module** CI/CD · M2 Expert en Développement et Déploiement de Solutions Numériques Sécurisées · Sup de Vinci Rennes
 **Auteur** Tanguy D. · **Formateur** Alimou Diallo · **Date** 09/11/2026
-**Dépôt** https://github.com/txngUI/souverainrecrut (branche `Dev`) · **Image** `iamkrugs/souverainrecrut-backend`
+**Dépôt (code et livrables)** https://github.com/txngUI/souverainrecrut (branche `Dev`)
+**Pipeline de déploiement (GitLab)** https://gitlab.com/tanguy-cicd/souverainrecrut-deploiement (projet privé, accès sur invitation ; contenu identique au dossier `deploiement/`)
+**Image** https://hub.docker.com/r/iamkrugs/souverainrecrut-backend · **API** https://api.tanguydavid.fr · **Jenkins** https://jenkins.tanguydavid.fr · **SonarQube** https://sonar.tanguydavid.fr
 
 ---
 
@@ -40,7 +42,7 @@ Version vectorielle : [`schemas/pipeline.svg`](schemas/pipeline.svg).
 
 ## 0. Documents du livrable : où les trouver et pourquoi les lire
 
-Ce rapport donne une **vue synthétique** de la démarche et des résultats. Le détail technique, les fichiers exécutables et les preuves se trouvent dans les documents ci-dessous. Les chemins sont relatifs à la racine du dépôt [github.com/txngUI/souverainrecrut](https://github.com/txngUI/souverainrecrut) (branche `Dev`). Le dossier `deploiement/` est aussi publié dans le projet GitLab `tanguy-cicd/souverainrecrut-deploiement`.
+Ce rapport donne une **vue synthétique** de la démarche et des résultats. Le détail technique, les fichiers exécutables et les preuves se trouvent dans les documents ci-dessous. Les chemins sont relatifs à la racine du dépôt [github.com/txngUI/souverainrecrut](https://github.com/txngUI/souverainrecrut) (branche `Dev`). Le dossier `deploiement/` est aussi publié dans le projet GitLab [`tanguy-cicd/souverainrecrut-deploiement`](https://gitlab.com/tanguy-cicd/souverainrecrut-deploiement) (privé, accès sur invitation), où s'exécute la pipeline de déploiement.
 
 ### 0.1 Documentation (`documentation/`)
 
