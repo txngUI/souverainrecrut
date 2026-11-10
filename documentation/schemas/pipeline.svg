@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1050" width="1400" height="1050" font-family="'Noto Sans','DejaVu Sans','Liberation Sans',Arial,sans-serif">
+  <defs>
+    <marker id="fl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3a3f4b"/>
+    </marker>
+    <style>
+      .t  { font-size: 15px; font-weight: 700; fill: #1f2430; }
+      .s  { font-size: 12.5px; fill: #3a3f4b; }
+      .b  { font-size: 12px; fill: #c0392b; font-weight: 600; }
+      .lane { font-size: 15px; font-weight: 700; }
+      .box { fill: #ffffff; stroke: #8a93a6; stroke-width: 1.4; }
+      .arr { stroke: #3a3f4b; stroke-width: 2; fill: none; marker-end: url(#fl); }
+      .lbl { font-size: 12.5px; fill: #3a3f4b; font-style: italic; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="1050" fill="#ffffff"/>
+  <text x="700" y="38" text-anchor="middle" font-size="22" font-weight="700" fill="#1f2430">Pipeline CI/CD SouverainRecrut : du push à l'API déployée</text>
+
+  <!-- ===================== Développeur / GitHub ===================== -->
+  <rect x="60" y="72" width="260" height="58" rx="8" class="box"/>
+  <text x="190" y="96" text-anchor="middle" class="t">Développeur</text>
+  <text x="190" y="116" text-anchor="middle" class="s">git push sur la branche Dev</text>
+  <line x1="320" y1="101" x2="396" y2="101" class="arr"/>
+  <rect x="400" y="72" width="320" height="58" rx="8" class="box"/>
+  <text x="560" y="96" text-anchor="middle" class="t">GitHub</text>
+  <text x="560" y="116" text-anchor="middle" class="s">txngUI/souverainrecrut</text>
+  <line x1="560" y1="130" x2="560" y2="196" class="arr"/>
+  <text x="572" y="168" class="lbl">webhook HTTPS (immédiat)</text>
+
+  <!-- ===================== VPS 2 : CI ===================== -->
+  <rect x="30" y="200" width="1340" height="300" rx="12" fill="#eef4ff" stroke="#3b6fd8" stroke-width="2"/>
+  <text x="50" y="224" class="lane" fill="#2b56b0">VPS 2 · Intégration continue · Jenkins + SonarQube (jenkins.tanguydavid.fr)</text>
+
+  <!-- ligne 1 -->
+  <rect x="60"   y="240" width="236" height="100" rx="8" class="box"/>
+  <text x="178" y="264" text-anchor="middle" class="t">1. Checkout</text>
+  <text x="178" y="286" text-anchor="middle" class="s">branche Dev</text>
+  <text x="178" y="306" text-anchor="middle" class="s">tag 1.0.0-&lt;sha7&gt;</text>
+
+  <rect x="320"  y="240" width="236" height="100" rx="8" class="box"/>
+  <text x="438" y="264" text-anchor="middle" class="t">2. Installation</text>
+  <text x="438" y="286" text-anchor="middle" class="s">npm ci · prisma generate</text>
+  <text x="438" y="326" text-anchor="middle" class="b">✕ dépendance ou schéma invalide</text>
+
+  <rect x="580"  y="240" width="236" height="100" rx="8" class="box"/>
+  <text x="698" y="264" text-anchor="middle" class="t">3. Lint</text>
+  <text x="698" y="286" text-anchor="middle" class="s">ESLint · Prettier</text>
+  <text x="698" y="326" text-anchor="middle" class="b">✕ règle violée</text>
+
+  <rect x="840"  y="240" width="236" height="100" rx="8" fill="#ffffff" stroke="#3b6fd8" stroke-width="2.4"/>
+  <text x="958" y="264" text-anchor="middle" class="t">4. Tests + couverture</text>
+  <text x="958" y="286" text-anchor="middle" class="s">Jest · supertest · 110 tests</text>
+  <text x="958" y="305" text-anchor="middle" class="s">couverture 100 % → lcov.info</text>
+  <text x="958" y="326" text-anchor="middle" class="b">✕ test rouge ou couverture &lt; 80 %</text>
+
+  <rect x="1100" y="240" width="236" height="100" rx="8" class="box"/>
+  <text x="1218" y="264" text-anchor="middle" class="t">5. Analyse SonarQube</text>
+  <text x="1218" y="286" text-anchor="middle" class="s">code + lcov.info</text>
+  <text x="1218" y="305" text-anchor="middle" class="s">bugs · vulnérabilités · dette</text>
+
+  <line x1="296" y1="290" x2="316" y2="290" class="arr"/>
+  <line x1="556" y1="290" x2="576" y2="290" class="arr"/>
+  <line x1="816" y1="290" x2="836" y2="290" class="arr"/>
+  <line x1="1076" y1="290" x2="1096" y2="290" class="arr"/>
+  <line x1="1218" y1="340" x2="1218" y2="366" class="arr"/>
+
+  <!-- ligne 2 (de droite à gauche) -->
+  <rect x="1100" y="370" width="236" height="100" rx="8" class="box"/>
+  <text x="1218" y="394" text-anchor="middle" class="t">6. Quality Gate</text>
+  <text x="1218" y="416" text-anchor="middle" class="s">Sonar way · webhook → Jenkins</text>
+  <text x="1218" y="456" text-anchor="middle" class="b">✕ gate rouge</text>
+
+  <rect x="840"  y="370" width="236" height="100" rx="8" class="box"/>
+  <text x="958" y="394" text-anchor="middle" class="t">7. Build de l'image</text>
+  <text x="958" y="416" text-anchor="middle" class="s">Docker multi-stage, non-root</text>
+  <text x="958" y="435" text-anchor="middle" class="s">Node 22 · labels OCI</text>
+
+  <rect x="580"  y="370" width="236" height="100" rx="8" class="box"/>
+  <text x="698" y="394" text-anchor="middle" class="t">8. Scan Trivy</text>
+  <text x="698" y="416" text-anchor="middle" class="s">rapport archivé</text>
+  <text x="698" y="456" text-anchor="middle" class="b">✕ HIGH/CRITICAL corrigeable</text>
+
+  <rect x="320"  y="370" width="236" height="100" rx="8" class="box"/>
+  <text x="438" y="394" text-anchor="middle" class="t">9. Publication</text>
+  <text x="438" y="416" text-anchor="middle" class="s">docker push</text>
+  <text x="438" y="435" text-anchor="middle" class="s">seulement si tout est vert</text>
+
+  <line x1="1100" y1="420" x2="1080" y2="420" class="arr"/>
+  <line x1="840"  y1="420" x2="820"  y2="420" class="arr"/>
+  <line x1="580"  y1="420" x2="560"  y2="420" class="arr"/>
+
+  <rect x="60" y="370" width="236" height="100" rx="8" fill="#fdecea" stroke="#c0392b" stroke-width="1.4"/>
+  <text x="178" y="396" text-anchor="middle" font-size="13" font-weight="700" fill="#c0392b">✕ Barrière bloquante</text>
+  <text x="178" y="418" text-anchor="middle" class="s">un échec arrête la pipeline :</text>
+  <text x="178" y="437" text-anchor="middle" class="s">aucune image n'est publiée</text>
+
+  <!-- ===================== Docker Hub ===================== -->
+  <line x1="438" y1="470" x2="438" y2="526" class="arr"/>
+  <rect x="270" y="530" width="340" height="64" rx="8" fill="#fff7e6" stroke="#d48806" stroke-width="2"/>
+  <text x="440" y="555" text-anchor="middle" class="t">Docker Hub</text>
+  <text x="440" y="577" text-anchor="middle" class="s">iamkrugs/souverainrecrut-backend:1.0.0-&lt;sha7&gt;</text>
+
+  <rect x="690" y="530" width="650" height="64" rx="8" fill="#f6f7f9" stroke="#8a93a6" stroke-dasharray="6 4"/>
+  <text x="1015" y="555" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1f2430">Aucun lien direct entre le VPS 2 et le VPS 1</text>
+  <text x="1015" y="577" text-anchor="middle" class="s">Docker Hub est la seule interface : la CI n'a aucun accès à la production</text>
+
+  <line x1="440" y1="594" x2="440" y2="646" class="arr" stroke-dasharray="5 4"/>
+  <text x="452" y="624" class="lbl">tag vérifié par GitLab, image tirée par le VPS 1</text>
+
+  <!-- ===================== GitLab ===================== -->
+  <rect x="30" y="650" width="1340" height="150" rx="12" fill="#f3eefc" stroke="#7b3fe4" stroke-width="2"/>
+  <text x="50" y="674" class="lane" fill="#5b2bb5">GitLab CI/CD · gitlab.com · lancement manuel avec le tag à déployer (input backend_tag)</text>
+
+  <rect x="60" y="694" width="300" height="90" rx="8" class="box"/>
+  <text x="210" y="718" text-anchor="middle" class="t">1. validate-tag</text>
+  <text x="210" y="740" text-anchor="middle" class="s">format &lt;version&gt;-&lt;sha7&gt;</text>
+  <text x="210" y="759" text-anchor="middle" class="s">tag présent sur Docker Hub</text>
+
+  <rect x="420" y="694" width="540" height="90" rx="8" class="box"/>
+  <text x="690" y="718" text-anchor="middle" class="t">2. deploy-production (SSH, clé dédiée, compte sans sudo)</text>
+  <text x="690" y="740" text-anchor="middle" class="s">pg_dump → mise à jour du tag → pull → migrations Prisma → up --wait</text>
+  <text x="690" y="762" text-anchor="middle" class="b">échec ⇒ retour automatique au tag précédent</text>
+
+  <rect x="1020" y="694" width="320" height="90" rx="8" class="box"/>
+  <text x="1180" y="718" text-anchor="middle" class="t">3. verify-api</text>
+  <text x="1180" y="740" text-anchor="middle" class="s">GET /v1/ready</text>
+  <text x="1180" y="759" text-anchor="middle" class="s">doit répondre READY</text>
+
+  <line x1="360" y1="739" x2="416" y2="739" class="arr"/>
+  <line x1="960" y1="739" x2="1016" y2="739" class="arr"/>
+
+  <!-- ===================== VPS 1 : production ===================== -->
+
+  <rect x="30" y="820" width="1340" height="170" rx="12" fill="#ecf8ef" stroke="#2e8b57" stroke-width="2"/>
+  <text x="50" y="844" class="lane" fill="#22704a">VPS 1 · Production (api.tanguydavid.fr)</text>
+
+  <line x1="690" y1="784" x2="690" y2="866" class="arr"/>
+  <text x="702" y="862" class="lbl">SSH : docker compose (image tirée de Docker Hub)</text>
+  <text x="1180" y="862" text-anchor="middle" class="lbl">contrôle public : https://api.tanguydavid.fr/v1/ready</text>
+
+  <rect x="60" y="870" width="300" height="96" rx="8" class="box"/>
+  <text x="210" y="896" text-anchor="middle" class="t">Caddy</text>
+  <text x="210" y="918" text-anchor="middle" class="s">HTTPS · certificat Let's Encrypt</text>
+  <text x="210" y="937" text-anchor="middle" class="s">reverse proxy</text>
+
+  <rect x="420" y="870" width="540" height="96" rx="8" class="box"/>
+  <text x="690" y="896" text-anchor="middle" class="t">API SouverainRecrut (conteneur)</text>
+  <text x="690" y="918" text-anchor="middle" class="s">image 1.0.0-&lt;sha7&gt; · healthcheck /v1/health</text>
+  <text x="690" y="937" text-anchor="middle" class="s">aucun port publié · secrets dans .env du serveur</text>
+
+  <rect x="1020" y="870" width="320" height="96" rx="8" class="box"/>
+  <text x="1180" y="896" text-anchor="middle" class="t">PostgreSQL 17</text>
+  <text x="1180" y="918" text-anchor="middle" class="s">réseau interne · volume db_data</text>
+  <text x="1180" y="937" text-anchor="middle" class="s">sauvegarde avant chaque déploiement</text>
+
+  <line x1="360" y1="918" x2="416" y2="918" class="arr"/>
+  <line x1="960" y1="918" x2="1016" y2="918" class="arr"/>
+
+  <!-- ===================== pied ===================== -->
+  <text x="700" y="1024" text-anchor="middle" font-size="13" fill="#5a6070">Infrastructure décrite en code : Terraform (DNS api · jenkins · sonar) · Ansible (préparation idempotente des deux VPS)</text>
+</svg>

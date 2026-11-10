@@ -6,6 +6,20 @@
 
 ---
 
+## Vue d'ensemble de la pipeline
+
+![Schéma de la pipeline CI/CD, du push à l'API déployée](schemas/pipeline.png)
+
+*Lecture du schéma :*
+- **en bleu, le VPS 2 (intégration continue) :** un push sur GitHub déclenche Jenkins par webhook. Le code passe ensuite neuf étapes : installation, lint, **tests et couverture** (Jest, seuil de 80 %, rapport `lcov.info`), analyse SonarQube, **Quality Gate**, construction de l'image et scan **Trivy**. Les marques ✕ rouges sont des barrières bloquantes : au moindre échec, aucune image n'est publiée ;
+- **au centre, Docker Hub :** l'image validée y est publiée sous un tag `1.0.0-<sha7>`. C'est la **seule interface** entre les deux serveurs ;
+- **en violet, GitLab :** il valide le tag, puis déploie par SSH sur le VPS 1, avec sauvegarde de la base et retour automatique en cas d'échec. Il vérifie enfin l'API ;
+- **en vert, le VPS 1 (production) :** Caddy (HTTPS), l'API et PostgreSQL sur un réseau interne.
+
+Version vectorielle : [`schemas/pipeline.svg`](schemas/pipeline.svg).
+
+---
+
 ## Sommaire
 
 0. [Documents du livrable : où les trouver et pourquoi les lire](#0-documents-du-livrable--où-les-trouver-et-pourquoi-les-lire)
@@ -37,6 +51,7 @@ Ce rapport donne une **vue synthétique** de la démarche et des résultats. Le 
 | [`procedure-deploiement.md`](procedure-deploiement.md) | Mise en place initiale, déploiement courant, vérifications, déploiement de secours, dépannage | **Reproduire** le déploiement pas à pas (exigence de reproductibilité du §7) |
 | [`procedure-rollback.md`](procedure-rollback.md) | Choix de la procédure selon la situation, redéploiement d'un tag précédent, restauration de la base (procédure testée), configuration du serveur | **Revenir à une version antérieure** en cas d'incident (exigence de continuité du §7) |
 | [`captures/`](captures/) | Captures d'écran des principales étapes | **Preuves visuelles**, insérées dans ce rapport |
+| [`schemas/`](schemas/) | Schéma de la pipeline complète (`pipeline.svg`, `pipeline.png`) | Comprendre **d'un coup d'œil** tout le cheminement, du push à l'API déployée |
 
 ### 0.2 Intégration continue (`integration-continue/`)
 
