@@ -3,9 +3,11 @@
 //
 // Checkout Dev → npm ci → Prisma → lint → tests + couverture → SonarQube
 // → Quality Gate → build image → scan Trivy → publication Docker Hub
+// → déclenchement du déploiement (pipeline GitLab)
 //
 // Prérequis Jenkins (voir integration-continue/README.md) :
-//   - credentials : "sonar-token" (Secret text), "dockerhub" (Username with password)
+//   - credentials : "sonar-token" (Secret text), "dockerhub" (Username with password),
+//     "gitlab-trigger-token" (Secret text : jeton de déclenchement du projet de déploiement)
 //   - serveur SonarQube nommé "sonarqube", scanner nommé "sonar-scanner"
 // Aucun secret n'est écrit dans ce fichier.
 // ==========================================================================
@@ -151,6 +153,28 @@ pipeline {
           docker push "$IMAGE_NAME:$IMAGE_TAG"
           docker push "$IMAGE_NAME:sha-$GIT_SHORT"
         '''
+      }
+    }
+
+    stage('Deploy (GitLab)') {
+      // Déploiement continu : l'image publiée déclenche la pipeline de déploiement GitLab,
+      // avec son tag en input. Jenkins n'a aucun accès au serveur de production : il ne
+      // possède qu'un jeton de déclenchement, limité au projet de déploiement.
+      when {
+        expression { env.GIT_BRANCH in ['origin/Dev', 'Dev'] }
+      }
+      steps {
+        withCredentials([string(credentialsId: 'gitlab-trigger-token', variable: 'GITLAB_TRIGGER_TOKEN')]) {
+          sh '''
+            curl -sS --fail-with-body -X POST \
+              --form "token=$GITLAB_TRIGGER_TOKEN" \
+              --form "ref=main" \
+              --form "inputs[backend_tag]=$IMAGE_TAG" \
+              "https://gitlab.com/api/v4/projects/tanguy-cicd%2Fsouverainrecrut-deploiement/trigger/pipeline" \
+              -o gitlab-pipeline.json
+            echo "Pipeline de déploiement GitLab : $(grep -o '"web_url":"[^"]*"' gitlab-pipeline.json | cut -d '"' -f4)"
+          '''
+        }
       }
     }
   }
