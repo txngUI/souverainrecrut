@@ -27,3 +27,21 @@ variable "ttl" {
   type        = number
   default     = 3600
 }
+
+variable "ci_server_ipv4" {
+  description = "Adresse IPv4 publique du serveur d'intégration continue (Jenkins + SonarQube)"
+  type        = string
+  default     = "185.216.25.110"
+}
+
+variable "ci_server_ipv6" {
+  description = "Adresse IPv6 publique du serveur d'intégration continue"
+  type        = string
+  default     = "2a07:abc4::149:91:80:90"
+}
+
+variable "ci_subdomains" {
+  description = "Sous-domaines exposant les outils de CI"
+  type        = set(string)
+  default     = ["jenkins", "sonar"]
+}

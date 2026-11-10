@@ -1,0 +1,12 @@
+# Géré par Ansible (deploiement/ansible/playbook-ci.yml)
+# Certificats TLS obtenus automatiquement par Caddy (Let's Encrypt)
+
+{{ jenkins_domain }} {
+	encode zstd gzip
+	reverse_proxy jenkins:8080
+}
+
+{{ sonar_domain }} {
+	encode zstd gzip
+	reverse_proxy sonarqube:9000
+}

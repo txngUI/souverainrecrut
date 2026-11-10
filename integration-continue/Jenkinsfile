@@ -20,9 +20,9 @@ pipeline {
   }
 
   triggers {
-    // Lab local : GitHub ne peut pas joindre Jenkins par webhook,
-    // Jenkins interroge donc le dépôt toutes les ~5 minutes.
-    pollSCM('H/5 * * * *')
+    // Jenkins est exposé en HTTPS (jenkins.tanguydavid.fr) : GitHub le prévient
+    // immédiatement à chaque push via un webhook (/github-webhook/).
+    githubPush()
   }
 
   environment {
@@ -96,6 +96,14 @@ pipeline {
 
     stage('Docker build') {
       steps {
+        // Connexion à Docker Hub AVANT le build : les téléchargements d'images de base
+        // (node, trivy) sont ainsi comptés sur le compte et non sur l'adresse IP du
+        // serveur, dont le quota anonyme est partagé avec d'autres clients de l'hébergeur.
+        withCredentials([usernamePassword(credentialsId: 'dockerhub',
+                                          usernameVariable: 'DH_USER',
+                                          passwordVariable: 'DH_TOKEN')]) {
+          sh 'echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin'
+        }
         sh '''
           docker build \
             --label org.opencontainers.image.version="$APP_VERSION" \
@@ -138,15 +146,11 @@ pipeline {
         expression { env.GIT_BRANCH in ['origin/Dev', 'Dev'] }
       }
       steps {
-        withCredentials([usernamePassword(credentialsId: 'dockerhub',
-                                          usernameVariable: 'DH_USER',
-                                          passwordVariable: 'DH_TOKEN')]) {
-          sh '''
-            echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
-            docker push "$IMAGE_NAME:$IMAGE_TAG"
-            docker push "$IMAGE_NAME:sha-$GIT_SHORT"
-          '''
-        }
+        // Session Docker Hub ouverte à l'étape Docker build, fermée dans post { always }
+        sh '''
+          docker push "$IMAGE_NAME:$IMAGE_TAG"
+          docker push "$IMAGE_NAME:sha-$GIT_SHORT"
+        '''
       }
     }
   }
@@ -154,6 +158,9 @@ pipeline {
   post {
     always {
       sh 'docker logout || true'
+      // L'image est publiée sur Docker Hub : la copie locale est supprimée pour ne pas
+      // remplir le disque du serveur de CI (une image d'environ 650 Mo par build)
+      sh 'docker image rm "$IMAGE_NAME:$IMAGE_TAG" "$IMAGE_NAME:sha-$GIT_SHORT" 2>/dev/null || true'
       cleanWs()
     }
     success {

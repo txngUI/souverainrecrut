@@ -1,0 +1,264 @@
+
+PLAY [Préparer le serveur d'intégration continue] ******************************
+
+TASK [Gathering Facts] *********************************************************
+ok: [vps-ci]
+
+TASK [Mettre à jour l'index des paquets] ***************************************
+ok: [vps-ci]
+
+TASK [Installer les dépendances système] ***************************************
+ok: [vps-ci]
+
+TASK [Activer les mises à jour de sécurité automatiques] ***********************
+ok: [vps-ci]
+
+TASK [Régler vm.max_map_count pour SonarQube (persistant)] *********************
+changed: [vps-ci]
+
+TASK [Installer et activer Docker] *********************************************
+included: /home/tanguy/Documents/GitHub/souverainrecrut/deploiement/ansible/tasks/docker.yml for vps-ci
+
+TASK [Détecter Docker Engine et le plugin Compose] *****************************
+ok: [vps-ci]
+
+TASK [Ajouter le dépôt officiel Docker (clé de signature incluse)] *************
+changed: [vps-ci]
+
+TASK [Installer les paquets Docker] ********************************************
+[ERROR]: Task failed: Module failed: No package matching 'docker-ce' is available
+Origin: /home/tanguy/Documents/GitHub/souverainrecrut/deploiement/ansible/tasks/docker.yml:24:7
+
+22         signed_by: https://download.docker.com/linux/ubuntu/gpg
+23
+24     - name: Installer les paquets Docker
+         ^ column 7
+
+fatal: [vps-ci]: FAILED! => {"changed": false, "msg": "No package matching 'docker-ce' is available"}
+...ignoring
+
+TASK [Activer et démarrer le service Docker (sans redémarrage)] ****************
+[ERROR]: Task failed: Module failed: Could not find the requested service docker: host
+Origin: /home/tanguy/Documents/GitHub/souverainrecrut/deploiement/ansible/tasks/docker.yml:38:3
+
+36
+37 # state: started ne redémarre pas un service déjà actif
+38 - name: Activer et démarrer le service Docker (sans redémarrage)
+     ^ column 3
+
+fatal: [vps-ci]: FAILED! => {"changed": false, "msg": "Could not find the requested service docker: host"}
+...ignoring
+
+TASK [Autoriser SSH, HTTP et HTTPS] ********************************************
+changed: [vps-ci] => (item={'port': '22', 'proto': 'tcp'})
+changed: [vps-ci] => (item={'port': '80', 'proto': 'tcp'})
+changed: [vps-ci] => (item={'port': '443', 'proto': 'tcp'})
+changed: [vps-ci] => (item={'port': '443', 'proto': 'udp'})
+
+TASK [Refuser le reste du trafic entrant et activer le pare-feu] ***************
+changed: [vps-ci]
+
+TASK [Créer le répertoire du lab] **********************************************
+--- before
++++ after
+@@ -1,4 +1,4 @@
+ {
+     "path": "/opt/souverainrecrut-ci/jenkins",
+-    "state": "absent"
++    "state": "directory"
+ }
+
+changed: [vps-ci]
+
+TASK [Copier les fichiers du lab (versionnés dans le dépôt)] *******************
+--- before
++++ after: /home/tanguy/Documents/GitHub/souverainrecrut/integration-continue/lab/docker-compose.yml
+@@ -0,0 +1,56 @@
++name: souverainrecrut-ci
++
++services:
++  sonar-db:
++    image: postgres:17-alpine
++    restart: unless-stopped
++    environment:
++      POSTGRES_USER: sonar
++      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:?SONAR_DB_PASSWORD manquant dans .env}
++      POSTGRES_DB: sonarqube
++    volumes:
++      - sonar_db:/var/lib/postgresql/data
++    healthcheck:
++      test: ["CMD-SHELL", "pg_isready -U sonar -d sonarqube"]
++      interval: 10s
++      timeout: 5s
++      retries: 5
++
++  sonarqube:
++    image: sonarqube:community
++    restart: unless-stopped
++    depends_on:
++      sonar-db:
++        condition: service_healthy
++    environment:
++      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonarqube
++      SONAR_JDBC_USERNAME: sonar
++      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD}
++    ports:
++      - "127.0.0.1:9000:9000"
++    volumes:
++      - sonar_data:/opt/sonarqube/data
++      - sonar_extensions:/opt/sonarqube/extensions
++      - sonar_logs:/opt/sonarqube/logs
++
++  jenkins:
++    build:
++      context: ./jenkins
++      args:
++        DOCKER_GID: ${DOCKER_GID:-963}
++    image: souverainrecrut/jenkins:lab
++    restart: unless-stopped
++    environment:
++      JAVA_OPTS: -Xmx1g
++    ports:
++      - "127.0.0.1:8080:8080"
++    volumes:
++      - jenkins_home:/var/jenkins_home
++      - /var/run/docker.sock:/var/run/docker.sock
++
++volumes:
++  sonar_db:
++  sonar_data:
++  sonar_extensions:
++  sonar_logs:
++  jenkins_home:
+\ No newline at end of file
+
+changed: [vps-ci] => (item=docker-compose.yml)
+--- before
++++ after: /home/tanguy/Documents/GitHub/souverainrecrut/integration-continue/lab/docker-compose.vps.yml
+@@ -0,0 +1,48 @@
++# ==========================================================================
++# Surcouche du lab pour le serveur d'intégration continue (VPS 2)
++#
++# Utilisée avec docker-compose.yml (COMPOSE_FILE dans .env) :
++#   - Jenkins et SonarQube ne publient plus aucun port : ils sont servis
++#     en HTTPS par Caddy (jenkins.tanguydavid.fr, sonar.tanguydavid.fr) ;
++#   - limites mémoire : en cas de dépassement, seul le conteneur fautif est
++#     arrêté, la mémoire du serveur reste disponible pour les autres services.
++# ==========================================================================
++
++services:
++  sonarqube:
++    ports: !reset []
++    mem_limit: 3g
++    environment:
++      SONAR_SEARCH_JAVAOPTS: "-Xms512m -Xmx512m"
++      SONAR_WEB_JAVAOPTS: "-Xmx512m"
++      SONAR_CE_JAVAOPTS: "-Xmx512m"
++
++  sonar-db:
++    mem_limit: 512m
++
++  jenkins:
++    ports: !reset []
++    mem_limit: 3g
++    environment:
++      JAVA_OPTS: -Xmx1g
++
++  # Reverse proxy HTTPS (certificats Let's Encrypt automatiques)
++  caddy:
++    image: caddy:2
++    restart: unless-stopped
++    ports:
++      - "80:80"
++      - "443:443"
++      - "443:443/udp"
++    volumes:
++      - ./Caddyfile:/etc/caddy/Caddyfile:ro
++      - caddy_data:/data
++      - caddy_config:/config
++    depends_on:
++      - jenkins
++      - sonarqube
++    mem_limit: 256m
++
++volumes:
++  caddy_data:
++  caddy_config:
+
+changed: [vps-ci] => (item=docker-compose.vps.yml)
+--- before
++++ after: /home/tanguy/Documents/GitHub/souverainrecrut/integration-continue/lab/jenkins/Dockerfile
+@@ -0,0 +1,25 @@
++FROM jenkins/jenkins:lts-jdk21
++
++USER root
++
++# Outils dont la pipeline a besoin :
++# - Docker CLI + buildx : docker build / push / scan Trivy (via le daemon de l'hôte)
++# - Node.js 22 : npm ci, prisma generate, tests
++RUN apt-get update \
++ && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
++ && install -m 0755 -d /etc/apt/keyrings \
++ && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
++ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
++      > /etc/apt/sources.list.d/docker.list \
++ && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
++ && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin nodejs \
++ && rm -rf /var/lib/apt/lists/*
++
++# Donne à l'utilisateur jenkins l'accès au socket Docker de l'hôte (même GID que le groupe docker de l'hôte)
++ARG DOCKER_GID=963
++RUN groupadd -g ${DOCKER_GID} docker-host && usermod -aG docker-host jenkins
++
++USER jenkins
++
++COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
++RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+\ No newline at end of file
+
+changed: [vps-ci] => (item=jenkins/Dockerfile)
+--- before
++++ after: /home/tanguy/Documents/GitHub/souverainrecrut/integration-continue/lab/jenkins/plugins.txt
+@@ -0,0 +1,8 @@
++git
++workflow-aggregator
++credentials-binding
++sonar
++docker-workflow
++pipeline-stage-view
++ws-cleanup
++github
+
+changed: [vps-ci] => (item=jenkins/plugins.txt)
+
+TASK [Déposer la configuration Caddy (Jenkins et SonarQube en HTTPS)] **********
+--- before
++++ after: /home/tanguy/.ansible/tmp/ansible-local-330548f61r9gv8/tmpxh9sfhz4/ci-Caddyfile.j2
+@@ -0,0 +1,12 @@
++# Géré par Ansible (deploiement/ansible/playbook-ci.yml)
++# Certificats TLS obtenus automatiquement par Caddy (Let's Encrypt)
++
++jenkins.tanguydavid.fr {
++	encode zstd gzip
++	reverse_proxy jenkins:8080
++}
++
++sonar.tanguydavid.fr {
++	encode zstd gzip
++	reverse_proxy sonarqube:9000
++}
+
+changed: [vps-ci]
+
+TASK [Installer le .env du lab (secret, jamais affiché)] ***********************
+changed: [vps-ci]
+
+TASK [Lire le GID du groupe docker du serveur] *********************************
+ok: [vps-ci]
+
+TASK [Adapter le .env au serveur (GID docker, surcouche VPS)] ******************
+skipping: [vps-ci]
+
+PLAY RECAP *********************************************************************
+vps-ci                     : ok=17   changed=8    unreachable=0    failed=0    skipped=1    rescued=0    ignored=2   
+

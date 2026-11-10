@@ -1,0 +1,48 @@
+# ==========================================================================
+# Surcouche du lab pour le serveur d'intégration continue (VPS 2)
+#
+# Utilisée avec docker-compose.yml (COMPOSE_FILE dans .env) :
+#   - Jenkins et SonarQube ne publient plus aucun port : ils sont servis
+#     en HTTPS par Caddy (jenkins.tanguydavid.fr, sonar.tanguydavid.fr) ;
+#   - limites mémoire : en cas de dépassement, seul le conteneur fautif est
+#     arrêté, la mémoire du serveur reste disponible pour les autres services.
+# ==========================================================================
+
+services:
+  sonarqube:
+    ports: !reset []
+    mem_limit: 3g
+    environment:
+      SONAR_SEARCH_JAVAOPTS: "-Xms512m -Xmx512m"
+      SONAR_WEB_JAVAOPTS: "-Xmx512m"
+      SONAR_CE_JAVAOPTS: "-Xmx512m"
+
+  sonar-db:
+    mem_limit: 512m
+
+  jenkins:
+    ports: !reset []
+    mem_limit: 3g
+    environment:
+      JAVA_OPTS: -Xmx1g
+
+  # Reverse proxy HTTPS (certificats Let's Encrypt automatiques)
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - jenkins
+      - sonarqube
+    mem_limit: 256m
+
+volumes:
+  caddy_data:
+  caddy_config:

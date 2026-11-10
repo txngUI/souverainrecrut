@@ -1,0 +1,44 @@
+# Tâches communes : installation de Docker Engine + Compose (si absent),
+# activation du service sans jamais le redémarrer.
+
+- name: Détecter Docker Engine et le plugin Compose
+  ansible.builtin.command: docker compose version
+  register: docker_compose_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Installer Docker Engine et Compose (uniquement s'ils sont absents)
+  when: docker_compose_check.rc != 0
+  block:
+    - name: Ajouter le dépôt officiel Docker (clé de signature incluse)
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: deb
+        uris: https://download.docker.com/linux/ubuntu
+        suites: "{{ ansible_facts['distribution_release'] }}"
+        components: stable
+        architectures: amd64
+        signed_by: https://download.docker.com/linux/ubuntu/gpg
+
+    - name: Installer les paquets Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+      # En simulation, le dépôt Docker n'est pas réellement ajouté : paquets introuvables
+      ignore_errors: "{{ ansible_check_mode }}"
+
+# state: started ne redémarre pas un service déjà actif
+- name: Activer et démarrer le service Docker (sans redémarrage)
+  ansible.builtin.systemd_service:
+    name: docker
+    enabled: true
+    state: started
+  # En simulation sur un serveur sans Docker, le service n'existe pas encore
+  ignore_errors: "{{ ansible_check_mode and docker_compose_check.rc != 0 }}"

@@ -43,43 +43,9 @@
         mode: "0644"
 
     # ---------------------------------------------------------------- Docker
-    - name: Détecter Docker Engine et le plugin Compose
-      ansible.builtin.command: docker compose version
-      register: docker_compose_check
-      changed_when: false
-      failed_when: false
-      check_mode: false
-
-    - name: Installer Docker Engine et Compose (uniquement s'ils sont absents)
-      when: docker_compose_check.rc != 0
-      block:
-        - name: Ajouter le dépôt officiel Docker (clé de signature incluse)
-          ansible.builtin.deb822_repository:
-            name: docker
-            types: deb
-            uris: https://download.docker.com/linux/ubuntu
-            suites: "{{ ansible_facts['distribution_release'] }}"
-            components: stable
-            architectures: amd64
-            signed_by: https://download.docker.com/linux/ubuntu/gpg
-
-        - name: Installer les paquets Docker
-          ansible.builtin.apt:
-            name:
-              - docker-ce
-              - docker-ce-cli
-              - containerd.io
-              - docker-buildx-plugin
-              - docker-compose-plugin
-            state: present
-            update_cache: true
-
-    # state: started ne redémarre pas un service déjà actif
-    - name: Activer et démarrer le service Docker (sans redémarrage)
-      ansible.builtin.systemd_service:
-        name: docker
-        enabled: true
-        state: started
+    # Tâches communes aux deux serveurs (installation uniquement si absent)
+    - name: Installer et activer Docker
+      ansible.builtin.include_tasks: tasks/docker.yml
 
     # ------------------------------------------------- Utilisateur de déploiement
     - name: Créer l'utilisateur de déploiement (groupe docker, sans sudo)

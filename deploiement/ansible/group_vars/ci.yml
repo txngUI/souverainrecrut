@@ -1,0 +1,7 @@
+# Lab d'intégration continue déployé sur le serveur de CI
+ci_dir: /opt/souverainrecrut-ci
+# Fichiers du lab, versionnés dans le dépôt (integration-continue/lab)
+lab_src: "{{ playbook_dir }}/../../integration-continue/lab"
+
+jenkins_domain: jenkins.tanguydavid.fr
+sonar_domain: sonar.tanguydavid.fr

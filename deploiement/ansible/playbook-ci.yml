@@ -1,0 +1,150 @@
+# ==========================================================================
+# Préparation du serveur d'intégration continue — Jenkins + SonarQube
+#
+#   ansible-playbook playbook-ci.yml --check --diff   # simulation
+#   ansible-playbook playbook-ci.yml --diff           # préparation (sans démarrage)
+#   ansible-playbook playbook-ci.yml --tags start     # construction et démarrage du lab
+#
+# Serveur dédié à la CI, séparé de la production : Jenkins n'a aucun accès
+# au serveur qui héberge l'API. Le lab est le même qu'en local
+# (integration-continue/lab), complété par docker-compose.vps.yml :
+# HTTPS via Caddy, aucun port Jenkins/SonarQube publié, limites mémoire.
+# ==========================================================================
+
+- name: Préparer le serveur d'intégration continue
+  hosts: ci
+  become: false
+
+  tasks:
+    # ---------------------------------------------------------------- Système
+    - name: Mettre à jour l'index des paquets
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Installer les dépendances système
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - ufw
+          - unattended-upgrades
+        state: present
+
+    - name: Activer les mises à jour de sécurité automatiques
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        mode: "0644"
+
+    # SonarQube embarque Elasticsearch, qui exige vm.max_map_count >= 524288
+    - name: Régler vm.max_map_count pour SonarQube (persistant)
+      ansible.posix.sysctl:
+        name: vm.max_map_count
+        value: "1048576"
+        sysctl_file: /etc/sysctl.d/99-sonarqube.conf
+        state: present
+
+    # ---------------------------------------------------------------- Docker
+    - name: Installer et activer Docker
+      ansible.builtin.include_tasks: tasks/docker.yml
+
+    # ------------------------------------------------------------- Pare-feu
+    # Serveur dédié : seuls SSH et HTTP(S) sont ouverts. SSH est autorisé
+    # avant l'activation du pare-feu pour ne pas couper la session.
+    - name: Autoriser SSH, HTTP et HTTPS
+      community.general.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+      loop:
+        - { port: "22", proto: tcp }
+        - { port: "80", proto: tcp }
+        - { port: "443", proto: tcp }
+        - { port: "443", proto: udp }
+
+    - name: Refuser le reste du trafic entrant et activer le pare-feu
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    # ----------------------------------------------------------- Lab de CI
+    - name: Créer le répertoire du lab
+      ansible.builtin.file:
+        path: "{{ ci_dir }}/jenkins"
+        state: directory
+        mode: "0750"
+
+    - name: Copier les fichiers du lab (versionnés dans le dépôt)
+      ansible.builtin.copy:
+        src: "{{ lab_src }}/{{ item }}"
+        dest: "{{ ci_dir }}/{{ item }}"
+        mode: "0640"
+      loop:
+        - docker-compose.yml
+        - docker-compose.vps.yml
+        - jenkins/Dockerfile
+        - jenkins/plugins.txt
+
+    - name: Déposer la configuration Caddy (Jenkins et SonarQube en HTTPS)
+      ansible.builtin.template:
+        src: ci-Caddyfile.j2
+        dest: "{{ ci_dir }}/Caddyfile"
+        mode: "0644"
+
+    # Le .env du lab (mot de passe de la base SonarQube) est repris du poste
+    # d'administration, car la base migrée l'utilise déjà. Il n'est copié que s'il
+    # est absent sur le serveur, et son contenu n'est jamais affiché (diff, logs).
+    - name: Installer le .env du lab (secret, jamais affiché)
+      ansible.builtin.copy:
+        src: "{{ lab_src }}/.env"
+        dest: "{{ ci_dir }}/.env"
+        mode: "0600"
+        force: false
+      diff: false
+      no_log: true
+
+    - name: Lire le GID du groupe docker du serveur
+      ansible.builtin.command: getent group docker
+      register: docker_group
+      changed_when: false
+      check_mode: false
+      # En simulation sur un serveur sans Docker, le groupe n'existe pas encore
+      failed_when: docker_group.rc != 0 and not ansible_check_mode
+
+    - name: Adapter le .env au serveur (GID docker, surcouche VPS)
+      ansible.builtin.lineinfile:
+        path: "{{ ci_dir }}/.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+      loop:
+        - { key: DOCKER_GID, value: "{{ docker_group.stdout.split(':')[2] }}" }
+        - { key: COMPOSE_FILE, value: "docker-compose.yml:docker-compose.vps.yml" }
+      diff: false
+      when: not ansible_check_mode
+
+    # ---------------------------------------------- Démarrage (--tags start)
+    - name: Construire l'image Jenkins et démarrer le lab
+      ansible.builtin.command: docker compose up -d --build
+      args:
+        chdir: "{{ ci_dir }}"
+      register: ci_up
+      changed_when: true
+      tags: [start, never]
+
+    - name: État des conteneurs
+      ansible.builtin.command: docker compose ps --format "{{ '{{' }}.Service{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}"
+      args:
+        chdir: "{{ ci_dir }}"
+      register: ci_ps
+      changed_when: false
+      tags: [start, never]
+
+    - name: Afficher l'état du lab
+      ansible.builtin.debug:
+        msg: "{{ ci_ps.stdout_lines + ['Jenkins : https://' ~ jenkins_domain, 'SonarQube : https://' ~ sonar_domain] }}"
+      tags: [start, never]
