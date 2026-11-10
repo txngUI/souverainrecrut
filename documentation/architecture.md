@@ -12,14 +12,16 @@ La chaîne repose sur **deux VPS distincts**, conformément à la bonne pratique
 | **VPS 2 — intégration continue** (`185.216.25.110`) | Construire, tester, analyser, publier | Jenkins, SonarQube + PostgreSQL, Caddy (HTTPS). Joignable sur `jenkins.tanguydavid.fr` et `sonar.tanguydavid.fr`. |
 | **VPS 1 — production** (`45.155.170.40`) | Exécuter l'API | API + PostgreSQL (Docker Compose), derrière le reverse proxy Caddy du serveur. Joignable sur `api.tanguydavid.fr`. |
 
-**Les deux serveurs interagissent sans se connaître :** il n'existe **aucun lien direct** entre eux. Le serveur de CI n'a ni accès SSH ni identifiant pour la production. Ils communiquent uniquement par l'intermédiaire de **Docker Hub**, qui sert d'interface : le VPS 2 y publie une image, et le VPS 1 la récupère quand GitLab le lui demande.
+**Les deux serveurs interagissent sans se connaître :** il n'existe **aucun lien direct** entre eux. Le serveur de CI n'a ni accès SSH ni identifiant pour la production. Ils communiquent par deux intermédiaires :
+- **Docker Hub**, pour l'**image** : le VPS 2 la publie, le VPS 1 la récupère ;
+- **GitLab**, pour l'**ordre de déploiement** : le VPS 2 déclenche la pipeline avec un jeton limité à ce projet, et c'est GitLab qui se connecte au VPS 1.
 
 | Bénéfice | Explication |
 |---|---|
 | **Sécurité (moindre privilège)** | Jenkins exécute du code et pilote Docker, donc il dispose de droits élevés sur sa machine. Compromettre la CI ne donne **aucun accès** à la production ni à ses données. |
 | **Isolation des ressources** | Les builds (npm, tests, analyse, construction d'image) consomment CPU, RAM et disque sur le VPS 2, sans jamais ralentir l'API en production. |
 | **Indépendance** | La CI peut être arrêtée, mise à jour ou reconstruite sans interrompre la production, et inversement. Une version déjà publiée reste déployable même si la CI est indisponible. |
-| **Traçabilité** | Le seul point de passage est un tag d'image immuable : on sait exactement quelle version a quitté la CI et laquelle tourne en production. |
+| **Traçabilité** | Ce qui passe de la CI à la production se résume à un tag d'image immuable et à l'ordre de le déployer : on sait exactement quelle version a quitté la CI et laquelle tourne en production. |
 
 ## 2. Vue d'ensemble
 
@@ -34,6 +36,7 @@ La chaîne repose sur **deux VPS distincts**, conformément à la bonne pratique
  │                    ▲  ◀─Quality Gate─┘   │    │   │ tanguy-cicd/                 │
  │                    │                PostgreSQL│   │ souverainrecrut-deploiement  │
  │                    └─▶ build + scan Trivy     │   │ validate → deploy → verify   │
+ │                    └─▶ jeton de déclenchement ─┼──▶│ (lancée par Jenkins)         │
  └───────────────────────────┬───────────────────┘   └──────────────┬───────────────┘
                              │ docker push                          │ SSH (clé dédiée,
                              ▼ (si tout est vert)                   │ sans sudo)
@@ -47,6 +50,7 @@ La chaîne repose sur **deux VPS distincts**, conformément à la bonne pratique
                                                     │ (réseau interne, volume db_data) │
                                                     └──────────────────────────────────┘
 
+ Le VPS 2 n'a ni clé ni accès au VPS 1 : il publie l'image et demande le déploiement à GitLab.
  DNS (Terraform, provider Hostinger) : api → VPS 1 · jenkins, sonar → VPS 2
 ```
 
@@ -59,10 +63,10 @@ La chaîne repose sur **deux VPS distincts**, conformément à la bonne pratique
 | **SonarQube** + PostgreSQL | VPS 2, conteneurs | Analyse statique et Quality Gate (*Sonar way*) |
 | **Caddy** (CI) | VPS 2, conteneur | HTTPS (Let's Encrypt) pour Jenkins et SonarQube ; seul service exposé du VPS 2 |
 | **Trivy** | VPS 2, conteneur lancé par Jenkins | Scan des vulnérabilités de l'image avant publication |
-| **Docker Hub** | hub.docker.com | Registre de l'image versionnée : **unique interface entre les deux VPS** |
+| **Docker Hub** | hub.docker.com | Registre de l'image versionnée, publiée par le VPS 2 et récupérée par le VPS 1 |
 | **Terraform** | Poste d'administration → API Hostinger | Enregistrements DNS `api`, `jenkins`, `sonar` (A + AAAA) |
 | **Ansible** | Poste d'administration → VPS 1 et VPS 2 (SSH root par clé) | Préparation idempotente des deux serveurs (`playbook.yml` pour la production, `playbook-ci.yml` pour la CI) |
-| **GitLab CI/CD** | GitLab.com (runners hébergés) | Déploiement d'un tag d'image sur le VPS 1, vérification, retour arrière automatique |
+| **GitLab CI/CD** | GitLab.com (runners hébergés) | Déploiement d'un tag d'image sur le VPS 1, **déclenché automatiquement par Jenkins** (ou à la main pour un retour arrière), vérification, retour arrière automatique |
 | **API** | VPS 1, conteneur `api` | Service applicatif, sans port publié |
 | **PostgreSQL 17** | VPS 1, conteneur `db` | Base de l'application, volume persistant `db_data`, réseau interne uniquement |
 
@@ -78,7 +82,7 @@ La chaîne repose sur **deux VPS distincts**, conformément à la bonne pratique
 | 6 | Build de l'image `1.0.0-<sha7>` | VPS 2 | Build en échec |
 | 7 | Scan de l'image | VPS 2 (Trivy) | HIGH/CRITICAL corrigeable non justifiée |
 | 8 | Publication | VPS 2 → Docker Hub | (seulement si 3 à 7 sont verts) |
-| 9 | Lancement du déploiement avec ce tag | GitLab | Tag invalide ou absent de Docker Hub |
+| 9 | **Jenkins déclenche** la pipeline de déploiement avec ce tag | VPS 2 → GitLab | Tag invalide ou absent de Docker Hub |
 | 10 | Sauvegarde de la base, pull, migrations, démarrage | GitLab → SSH → VPS 1 | Migration ou healthcheck en échec : **retour automatique au tag précédent** |
 | 11 | Vérification publique `/v1/ready` | GitLab → VPS 1 | API non `READY` |
 
@@ -102,7 +106,7 @@ Sur le VPS 1, qui héberge aussi d'autres services sans lien avec le projet, le 
 
 | Secret | Emplacement |
 |---|---|
-| Tokens SonarQube et Docker Hub (CI) | Credentials Jenkins, sur le VPS 2 (masqués dans les logs) |
+| Tokens SonarQube et Docker Hub (CI), jeton de déclenchement GitLab | Credentials Jenkins, sur le VPS 2 (masqués dans les logs) |
 | Mot de passe de la base SonarQube | `.env` du lab sur le VPS 2 (droits 600) |
 | Token Docker Hub en lecture seule (téléchargements du VPS 2) | `/root/.docker/config.json` sur le VPS 2 (root uniquement) |
 | Token API Hostinger | Saisi à la demande dans le shell (`HOSTINGER_API_TOKEN`) |
@@ -115,7 +119,8 @@ Aucun secret de production n'est présent sur le serveur de CI. Aucun secret n'e
 
 | Choix | Justification |
 |---|---|
-| **CI et production sur deux VPS distincts**, reliés uniquement par Docker Hub | Moindre privilège, isolation des ressources, indépendance des deux environnements (voir §1) |
+| **CI et production sur deux VPS distincts**, sans lien direct (image par Docker Hub, ordre de déploiement par GitLab) | Moindre privilège, isolation des ressources, indépendance des deux environnements (voir §1) |
+| **Déploiement continu** : Jenkins déclenche GitLab après un build vert | Un push suffit pour livrer ; sécurité assurée par les barrières de la CI et le retour automatique en production (démontré) |
 | Image construite **une fois** (VPS 2), déployée telle quelle (VPS 1) | Ce qui est testé et scanné est exactement ce qui tourne en production |
 | CI (Jenkins) et CD (GitLab) séparées, dépôt de déploiement dédié | Responsabilités distinctes ; le déploiement ne dépend que d'un tag publié (orchestration multi-dépôts vue en cours) |
 | Webhook GitHub → Jenkins (HTTPS) | Build déclenché dès le push, sans scrutation périodique |

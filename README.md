@@ -16,8 +16,8 @@
 
 *Lecture du schéma :*
 - **en bleu, le VPS 2 (intégration continue) :** un push sur GitHub déclenche Jenkins par webhook. Le code passe ensuite neuf étapes : installation, lint, **tests et couverture** (Jest, seuil de 80 %, rapport `lcov.info`), analyse SonarQube, **Quality Gate**, construction de l'image et scan **Trivy**. Les marques ✕ rouges sont des barrières bloquantes : au moindre échec, aucune image n'est publiée ;
-- **au centre, Docker Hub :** l'image validée y est publiée sous un tag `1.0.0-<sha7>`. C'est la **seule interface** entre les deux serveurs ;
-- **en violet, GitLab :** il valide le tag, puis déploie par SSH sur le VPS 1, avec sauvegarde de la base et retour automatique en cas d'échec. Il vérifie enfin l'API ;
+- **au centre, Docker Hub :** l'image validée y est publiée sous un tag `1.0.0-<sha7>` ;
+- **en violet, GitLab :** **Jenkins le déclenche automatiquement** avec ce tag (jeton de déclenchement). Il valide le tag, puis déploie par SSH sur le VPS 1, avec sauvegarde de la base et **retour automatique en cas d'échec**. Il vérifie enfin l'API. La CI n'a **aucun accès direct** à la production ;
 - **en vert, le VPS 1 (production) :** Caddy (HTTPS), l'API et PostgreSQL sur un réseau interne.
 
 Version vectorielle : [`schemas/pipeline.svg`](documentation/schemas/pipeline.svg).
@@ -141,7 +141,15 @@ Chaque étape renvoie à sa documentation détaillée. Toutes les commandes exé
 | 20 | **Ansible** (`playbook-ci.yml`) : Docker, pare-feu (22, 80, 443), Caddy en HTTPS, limites mémoire | `failed=0` | [README CI §8](integration-continue/README.md) |
 | 21 | **Migration** du lab local vers le VPS 2 (volumes Docker) ; Docker Hub authentifié (quota anonyme partagé épuisé) | Job, credentials, projet SonarQube et Quality Gate conservés | [rapport §5](documentation/rapport-final.md) |
 | 22 | **Webhook GitHub → Jenkins** (`githubPush()`) | Build lancé dès le push : *« Started by GitHub push »* | [rapport §5](documentation/rapport-final.md) |
-| 23 | **Documentation** : rapport avec schéma, architecture des deux VPS, captures | CI séparée de la production, reliées uniquement par Docker Hub | [architecture](documentation/architecture.md) |
+| 23 | **Documentation** : rapport avec schéma, architecture des deux VPS, captures | CI séparée de la production, sans accès direct de l'une à l'autre | [architecture](documentation/architecture.md) |
+
+#### Partie 4 : déploiement continu et démonstrations du retour arrière
+
+| # | Étape | Résultat | Détail |
+|---|---|---|---|
+| 24 | **Démonstration du retour arrière manuel** : mise à jour vers `1.0.0-fae8904`, puis *Re-deploy* de `1.0.0-7fa9454` | `7fa9454 → fae8904 OK`, puis `fae8904 → 7fa9454 OK` | [rapport §11.7](#117-retour-arrière-rollback) |
+| 25 | **Démonstration du retour automatique** : déploiement d'une image volontairement défaillante (`1.0.0-0bad000`) | `ÉCHEC, retour à 1.0.0-7fa9454` ; API restée `READY` | [rapport §11.7](#117-retour-arrière-rollback) |
+| 26 | **Déploiement continu** : Jenkins déclenche la pipeline GitLab (jeton de déclenchement, tag en input) | Un `git push` met l'API à jour sans intervention : `7fa9454 → 877e485 OK` | [rapport §6](#6-pipeline-ci-jenkinsfile) |
 
 ---
 
@@ -170,24 +178,25 @@ La chaîne s'appuie sur **deux serveurs distincts**, comme le recommande la bonn
 |---|---|---|
 | Un push déclenche la CI | GitHub → **VPS 2** | Webhook HTTPS (`/github-webhook/`) |
 | La CI publie une image validée | **VPS 2** → Docker Hub | `docker push`, compte authentifié |
-| Le déploiement est commandé | GitLab → **VPS 1** | SSH, clé dédiée, compte sans sudo |
+| La CI demande le déploiement | **VPS 2** → GitLab | Appel API avec un **jeton de déclenchement** limité au projet de déploiement, et le tag en input |
+| Le déploiement est exécuté | GitLab → **VPS 1** | SSH, clé dédiée, compte sans sudo |
 | La production récupère l'image | Docker Hub → **VPS 1** | `docker pull` du tag demandé |
-| CI → production | **VPS 2 ✕ VPS 1** | **Aucun lien direct** : le registre est la seule interface |
+| CI → production | **VPS 2 ✕ VPS 1** | **Aucun lien direct** : la CI ne fait que publier une image et demander un déploiement. Elle ne possède ni clé, ni accès, ni identifiant de production. |
 
 **Pourquoi c'est la bonne pratique :**
 - **Moindre privilège :** Jenkins exécute du code et pilote Docker. Le compromettre ne donne **aucun accès** à la production : il n'en possède ni clé ni identifiant.
 - **Isolation des ressources :** les builds (npm, tests, analyse, image) ne consomment jamais la mémoire ni le CPU de l'API.
 - **Indépendance :** la CI peut être arrêtée ou reconstruite sans coupure de l'API, et une version publiée reste déployable même si la CI est indisponible.
-- **Traçabilité :** le seul passage entre les deux mondes est un tag d'image immuable.
+- **Traçabilité :** ce qui passe d'un monde à l'autre se résume à un tag d'image immuable et à l'ordre de le déployer.
 
 ### 2.2 Vue d'ensemble
 
 ```
 Développeur ──git push──▶ GitHub (Dev) ──webhook──┐                 GitHub ──subtree──▶ GitLab.com
                                                    ▼                                    (pipeline de
-┌─────────────── VPS 2 : INTÉGRATION CONTINUE ───────────────┐                          déploiement)
-│ Caddy HTTPS ─▶ Jenkins ──analyse──▶ SonarQube ─▶ PostgreSQL │                               │
-│                  ▲ ◀──── Quality Gate ────┘                 │                               │ SSH
+┌─────────────── VPS 2 : INTÉGRATION CONTINUE ───────────────┐  jeton de déclenchement  déploiement)
+│ Caddy HTTPS ─▶ Jenkins ──analyse──▶ SonarQube ─▶ PostgreSQL │ ───────────────────────▶      │
+│                  ▲ ◀──── Quality Gate ────┘                 │   (tag en input)               │ SSH
 │                  └─▶ build de l'image + scan Trivy          │                               │
 └──────────────────────────────┬──────────────────────────────┘                               │
                                │ docker push (si tout est vert)                               │
@@ -195,7 +204,7 @@ Développeur ──git push──▶ GitHub (Dev) ──webhook──┐        
                  Docker Hub : iamkrugs/souverainrecrut-backend ──docker pull──▶ ┌─── VPS 1 : PRODUCTION ───┐
                                :<version>-<sha7>                                │ Caddy HTTPS ─▶ API ─▶ PG │
                                                                                 └──────────────────────────┘
-                     Aucun lien direct entre le VPS 2 et le VPS 1
+                     Aucun lien direct entre le VPS 2 et le VPS 1 (pas de clé, pas d'accès)
 ```
 
 ### 2.3 Outils
@@ -209,10 +218,10 @@ Développeur ──git push──▶ GitHub (Dev) ──webhook──┐        
 | **Jenkins** | Orchestration de la pipeline, décrite dans un Jenkinsfile versionné |
 | **Docker** | Construction d'une image immuable et reproductible |
 | **Trivy** | Scan des vulnérabilités de l'image avant publication |
-| **Docker Hub** | Registre de l'image versionnée : **unique interface entre les deux VPS** |
+| **Docker Hub** | Registre de l'image versionnée, publiée par le VPS 2 et récupérée par le VPS 1 |
 | **Terraform** | DNS `api`, `jenkins`, `sonar` (provider Hostinger) |
 | **Ansible** | Préparation des deux serveurs (`playbook.yml`, `playbook-ci.yml`) |
-| **GitLab CI/CD** | Déploiement d'un tag d'image sur le VPS 1 |
+| **GitLab CI/CD** | Déploiement d'un tag d'image sur le VPS 1, déclenché automatiquement par Jenkins (ou à la main pour un retour arrière) |
 
 
 ## 3. Tests automatisés et couverture
@@ -315,8 +324,11 @@ Fichier versionné : [`integration-continue/Jenkinsfile`](integration-continue/J
 | 8 | Docker build | Connexion à Docker Hub, puis image taguée et étiquetée (version, commit, source) | build KO |
 | 9 | Trivy | Rapport archivé + contrôle bloquant | HIGH/CRITICAL corrigeable non justifiée |
 | 10 | Publish | `docker push` (branche `Dev` uniquement) | authentification KO |
+| 11 | Deploy (GitLab) | Déclenche la pipeline de déploiement GitLab avec le tag publié (API GitLab, jeton `gitlab-trigger-token`) | jeton invalide ou GitLab indisponible |
 
-Les étapes sont séquentielles : **un échec arrête la pipeline, et l'image n'est pas publiée**.
+Les étapes sont séquentielles : **un échec arrête la pipeline, et l'image n'est ni publiée ni déployée**.
+
+**Déploiement continu :** depuis l'étape 11, un `git push` sur `Dev` suffit pour mettre la production à jour, sans intervention. Premier déploiement automatique : `1.0.0-7fa9454 -> 1.0.0-877e485 OK (pipeline 3049563440)`, le 10/11/2026 à 12:27. Le filet de sécurité est double : les barrières de la CI (tests, Quality Gate, Trivy) d'un côté, et de l'autre le retour automatique à la version précédente si l'API ne démarre pas en production (voir §11.7).
 
 ![Pipeline verte](documentation/captures/jenkins-03-pipeline-stage-view.png)
 ![Artefacts archivés (couverture, rapport Trivy)](documentation/captures/jenkins-04-artefacts.png)
@@ -376,7 +388,7 @@ Le token est masqué (`echo ****`) dans les logs. L'avertissement Docker sur le 
 
 ## 10. Bilan et pistes d'amélioration
 
-**Bilan :** la chaîne est complète et répartie sur **deux VPS qui interagissent sans lien direct**. Un `git push` déclenche immédiatement la CI sur le VPS 2, qui ne publie l'image que si trois barrières bloquantes sont franchies : tests et couverture, Quality Gate, Trivy. Le déploiement sur le VPS 1 se fait ensuite par GitLab, à partir de ce tag.
+**Bilan :** la chaîne est complète et répartie sur **deux VPS qui interagissent sans lien direct**. Un `git push` déclenche immédiatement la CI sur le VPS 2, qui ne publie l'image que si trois barrières bloquantes sont franchies : tests et couverture, Quality Gate, Trivy. Jenkins déclenche ensuite automatiquement GitLab, qui déploie ce tag sur le VPS 1 et revient seul à la version précédente en cas d'échec : c'est du **déploiement continu**, démontré en production.
 
 **Démonstration d'un blocage :** le build n°2 a été rejoué (*Replay*) avec un seuil Trivy durci (`--severity MEDIUM,HIGH,CRITICAL`). Trivy détecte les 3 vulnérabilités MEDIUM et renvoie un code de sortie non nul. L'étape *Trivy* échoue, *Publish* n'est pas exécutée et aucune image n'est poussée. Le Quality Gate, lui, reste *Passed* : chaque barrière est indépendante.
 
@@ -386,7 +398,8 @@ Le token est masqué (`echo ****`) dans les logs. L'avertissement Docker sur le 
 
 - Migrer vers Prisma 7, ce qui lève l'exception Trivy.
 - Signer le webhook GitHub avec un secret partagé (HMAC), vérifié par Jenkins.
-- Déclencher automatiquement la pipeline GitLab à la fin d'un build Jenkins vert (*trigger token*).
+- Ajouter un environnement de staging et une approbation avant la production, pour combiner livraison continue et contrôle humain.
+- Faire attendre à Jenkins le résultat du déploiement GitLab, pour remonter son statut dans le build.
 - Ajouter un scan de secrets (gitleaks) et un audit de dépendances (`npm audit`) dans la pipeline.
 - Construire l'image sur un agent de build dédié ou sans daemon (BuildKit rootless), plutôt que via le socket Docker du VPS 2.
 
@@ -514,7 +527,7 @@ GitLab.com (offre cloud, runners hébergés) prend en charge le **déploiement c
 | Contenu | Le dossier `deploiement/` du dépôt GitHub est publié à la racine du projet GitLab avec `git subtree`. Le dépôt GitHub reste la **source unique**, et `.gitlab-ci.yml` est à la racine côté GitLab. |
 | Contrôle avant publication | Scan gitleaks du contenu commité : `no leaks found` ; état Terraform ignoré par Git |
 
-Pousser n'exécute rien : la pipeline se déclenche **uniquement manuellement** (règle `workflow`).
+Pousser vers GitLab n'exécute rien (règle `workflow`) : la pipeline est lancée **par Jenkins** (source `trigger`), ou **à la main** (formulaire, *Re-deploy*) pour un retour arrière.
 
 | Job | Rôle |
 |---|---|
@@ -522,13 +535,15 @@ Pousser n'exécute rien : la pipeline se déclenche **uniquement manuellement** 
 | `deploy-production` | Envoie le fichier Compose en SSH (empreinte du serveur vérifiée) ; **sauvegarde la base** (`pg_dump`, 5 dernières conservées) ; met à jour `BACKEND_TAG` ; lance `pull` et `up --wait`. **En cas d'échec, revient automatiquement au tag précédent.** Journalise dans `deploy-history.log`. |
 | `verify-api` | Vérifie que `/v1/ready` répond `READY` |
 
-Déclenchement manuel : le tag à déployer est saisi dans le formulaire de lancement, via un **input** de pipeline (`spec:inputs`, mécanisme recommandé par GitLab à la place des variables libres). `resource_group` garantit un seul déploiement à la fois. L'environnement GitLab `production` conserve l'historique des déploiements.
+Le tag à déployer est passé par un **input** de pipeline : Jenkins le fournit à l'appel API, et il est saisi dans le formulaire de lancement en cas de déclenchement manuel (`spec:inputs`, mécanisme recommandé par GitLab à la place des variables libres). `resource_group` garantit un seul déploiement à la fois. L'environnement GitLab `production` conserve l'historique des déploiements.
 
 **Secrets :** GitLab ne reçoit que ce que liste le §4.4 :
 - la clé SSH (variable de type *File*, protégée) ;
 - l'empreinte du serveur ;
 - l'adresse et l'utilisateur ;
 - les identifiants Docker Hub : **volontairement non créés**. L'image est publique, et la pipeline saute la connexion si ces variables sont absentes. Un secret en moins dans la CI.
+
+Côté Jenkins, le **jeton de déclenchement** GitLab est un credential (`gitlab-trigger-token`). Il permet seulement de lancer la pipeline du projet de déploiement.
 
 Les 4 variables créées (`SSH_PRIVATE_KEY` de type *File*, `SSH_KNOWN_HOSTS`, `DEPLOY_HOST`, `DEPLOY_USER`) sont toutes *Protected* : elles ne sont transmises qu'à la branche protégée `main`. L'empreinte du serveur a été comparée à celle déjà connue du poste d'administration (`SHA256:cHakt12…dikx1Q`).
 
@@ -580,6 +595,29 @@ Historique brut : [`deploiement/reports/deploy-history-2026-11-10.txt`](deploiem
 ![Mise à jour par la pipeline GitLab](documentation/captures/rollback-01-mise-a-jour.png)
 ![Historique de l'environnement production avant le retour arrière](documentation/captures/rollback-02-environnement.png)
 ![Retour arrière par Re-deploy](documentation/captures/rollback-03-redeploy.png)
+
+**Démonstration 2, en production : retour automatique sur une version défaillante (10/11/2026)**
+
+Une image **volontairement en panne** a été publiée sous le tag `1.0.0-0bad000`. C'est la même API, mais avec un healthcheck qui échoue toujours. Elle simule une régression qui passe les contrôles mais casse au démarrage. Cette image de test a été construite hors de Jenkins, puis **supprimée de Docker Hub** après la démonstration.
+
+| Étape | Résultat |
+|---|---|
+| `validate-tag` | ✅ Le tag existe et respecte le format : la panne n'est pas détectable avant le démarrage |
+| `deploy-production` | ❌ Sauvegarde de la base, nouvelle image démarrée, API jamais *healthy* : **retour automatique** à la version précédente, puis job en échec pour signaler l'incident |
+| `verify-api` | Ignoré, puisque le déploiement a échoué |
+| Historique du serveur | `1.0.0-7fa9454 -> 1.0.0-0bad000 ÉCHEC, retour à 1.0.0-7fa9454 (pipeline 3049524745)` |
+| Production | `https://api.tanguydavid.fr/v1/ready` → `READY / CONNECTED`, juste après l'échec : **le service n'a pas été durablement interrompu** |
+
+![Pipeline : déploiement en échec, retour automatique](documentation/captures/rollback-04-panne-pipeline.png)
+![Jobs : deploy-production en échec, verify-api ignoré](documentation/captures/rollback-05-panne-journal.png)
+![L'API reste disponible après l'échec](documentation/captures/rollback-06-api-toujours-ok.png)
+
+**Bilan des démonstrations :** les trois chemins de retour arrière ont été exercés en conditions réelles :
+- **manuel**, par *Re-deploy* ;
+- **automatique**, sur une version défaillante ;
+- **restauration de la base**, testée sur une copie de l'environnement.
+
+Chaque déploiement a été précédé d'une sauvegarde de la base.
 
 ### 11.8 Documentation de référence
 
@@ -776,4 +814,27 @@ ansible-playbook playbook-ci.yml --tags start
 curl -s https://sonar.tanguydavid.fr/api/system/status   # "status":"UP"
 
 # GitHub : Settings > Webhooks > https://jenkins.tanguydavid.fr/github-webhook/ (push, JSON)
+```
+
+### A.15 Déploiement continu et démonstrations du retour arrière
+
+```bash
+# Déploiement continu : jeton de déclenchement GitLab (Settings > CI/CD > Pipeline trigger tokens),
+# enregistré dans Jenkins (credential Secret text "gitlab-trigger-token"), puis :
+git push origin Dev        # Jenkins → Docker Hub → Jenkins déclenche GitLab → déploiement
+
+# Appel effectué par l'étape "Deploy (GitLab)" du Jenkinsfile
+curl -sS --fail-with-body -X POST --form "token=$GITLAB_TRIGGER_TOKEN" --form "ref=main" \
+  --form "inputs[backend_tag]=$IMAGE_TAG" \
+  "https://gitlab.com/api/v4/projects/tanguy-cicd%2Fsouverainrecrut-deploiement/trigger/pipeline"
+
+# Démonstration 2 : image volontairement défaillante (supprimée de Docker Hub ensuite)
+printf 'FROM iamkrugs/souverainrecrut-backend:1.0.0-7fa9454\nHEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=2 CMD exit 1\n' \
+  | docker build -t iamkrugs/souverainrecrut-backend:1.0.0-0bad000 -
+docker push iamkrugs/souverainrecrut-backend:1.0.0-0bad000
+# GitLab : New pipeline, input backend_tag = 1.0.0-0bad000  →  ÉCHEC, retour automatique
+
+# Vérifications sur le serveur (compte souverainrecrut)
+cat /opt/souverainrecrut/deploy-history.log
+cd /opt/souverainrecrut && docker compose images api && docker compose ps
 ```

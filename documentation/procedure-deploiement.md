@@ -99,8 +99,10 @@ Ne jamais révéler une valeur de variable pour une capture d'écran.
 
 ## 3. Déploiement courant d'une nouvelle version
 
-1. **Publier l'image :** pousser le code sur `Dev`. Jenkins teste, analyse et scanne le code, puis publie `iamkrugs/souverainrecrut-backend:<version>-<sha7>`. Le tag figure dans le nom du build Jenkins et sur Docker Hub.
-2. **Déployer :** sur GitLab → *Build → Pipelines → New pipeline* → branche `main` → input **`backend_tag`** = le tag publié → *New pipeline*.
+Le déploiement est **continu** : il suffit de pousser.
+
+1. **Pousser le code** sur `Dev`. Jenkins teste, analyse et scanne le code, publie `iamkrugs/souverainrecrut-backend:<version>-<sha7>`, puis **déclenche lui-même** la pipeline GitLab avec ce tag. L'étape *Deploy (GitLab)* affiche le lien de la pipeline.
+2. **Déploiement à la main** (si besoin, par exemple pour redéployer un tag précis) : GitLab → *Build → Pipelines → New pipeline* → branche `main` → input **`backend_tag`** = le tag → *New pipeline*.
 3. **Suivre les 3 jobs :**
 
 | Job | Succès attendu |
@@ -146,6 +148,7 @@ echo "$(date -Is) <ANCIEN> -> <TAG> OK (manuel)" >> deploy-history.log
 |---|---|---|
 | `validate-tag` : `Tag invalide` | Input `backend_tag` vide ou mal saisi | Relancer avec un tag `<version>-<sha7>` |
 | `validate-tag` : `n'existe pas sur Docker Hub` | Image non publiée (pipeline Jenkins en échec) | Vérifier le build Jenkins et l'onglet *Tags* de Docker Hub |
+| Étape Jenkins *Deploy (GitLab)* en échec | Jeton `gitlab-trigger-token` absent, révoqué ou erroné | Recréer le jeton (*Settings → CI/CD → Pipeline trigger tokens*) et mettre à jour le credential Jenkins |
 | `SSH_PRIVATE_KEY illisible` | Clé incomplète dans la variable | Recoller la clé complète (BEGIN … END), type *File* |
 | `Host key verification failed` | `SSH_KNOWN_HOSTS` absente ou serveur différent | Vérifier l'empreinte du serveur avant de mettre la variable à jour |
 | `Permission denied (publickey)` | Clé de la variable différente de celle autorisée sur le serveur | Rejouer Ansible avec la bonne clé publique ; mettre la variable à jour |

@@ -189,7 +189,7 @@ documentation/
 
 ## 8. Serveur d'intégration continue (VPS 2)
 
-Après validation en local, le lab a été migré **tel quel** sur un VPS dédié à la CI, séparé du serveur de production. Les deux serveurs n'ont aucun lien direct : Docker Hub est leur seule interface (voir [`documentation/architecture.md`](../documentation/architecture.md) §1).
+Après validation en local, le lab a été migré **tel quel** sur un VPS dédié à la CI, séparé du serveur de production. Les deux serveurs n'ont aucun lien direct : l'image passe par Docker Hub, et l'ordre de déploiement par GitLab (voir [`documentation/architecture.md`](../documentation/architecture.md) §1).
 
 | Élément | Détail |
 |---|---|
@@ -199,6 +199,7 @@ Après validation en local, le lab a été migré **tel quel** sur un VPS dédi�
 | DNS | `deploiement/terraform/` : `jenkins` et `sonar` (A + AAAA) |
 | Migration | Copie des volumes `jenkins_home`, `sonar_db`, `sonar_data` et `sonar_extensions` par SSH. Configuration, credentials, projet SonarQube et Quality Gate conservés. |
 | Déclenchement | Plugin `github` + `githubPush()` ; webhook GitHub → `https://jenkins.tanguydavid.fr/github-webhook/` |
+| Déploiement continu | Étape *Deploy (GitLab)* : après la publication, Jenkins déclenche la pipeline GitLab (credential `gitlab-trigger-token`, tag en input) |
 | Docker Hub | Connexion avant le build (et token en lecture seule pour root) : le quota anonyme, partagé par l'IPv6 de l'hébergeur, renvoyait `429 Too Many Requests` |
 
 ```bash

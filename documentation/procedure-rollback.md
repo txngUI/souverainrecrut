@@ -23,6 +23,14 @@ Dans le job `deploy-production`, si `docker compose up --wait` échoue avec le n
 
 **Vérification :** `curl -s https://api.tanguydavid.fr/v1/ready` doit renvoyer `READY`.
 
+> **Démontré en production le 10/11/2026** avec une image volontairement défaillante (`1.0.0-0bad000`) :
+> - historique : `1.0.0-7fa9454 -> 1.0.0-0bad000 ÉCHEC, retour à 1.0.0-7fa9454` ;
+> - l'API est restée `READY`.
+>
+> Voir le rapport §11.7.
+
+> Avec le **déploiement continu**, ce retour automatique protège aussi les déploiements lancés par Jenkins après un push.
+
 ## 3. Redéployer le tag précédent
 
 ### 3.1 Trouver le tag précédent

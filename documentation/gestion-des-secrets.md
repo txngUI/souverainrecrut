@@ -30,6 +30,7 @@ Statut : ⏳ = à créer · ✅ = créé et stocké
 | Token d'analyse locale SonarQube (`analyse-locale`) | Analyses manuelles depuis le poste | Saisi à la demande (`read -rs`), jamais écrit sur disque | `SONAR_TOKEN` (shell) | Project Analysis Token, expiration 30 j | ✅ |
 | Mot de passe de la base PostgreSQL de SonarQube | Conteneurs `sonarqube` / `sonar-db` | `.env` du lab, non versionné (généré par `openssl rand -hex 16`) : poste d'administration, puis `/opt/souverainrecrut-ci/.env` sur le VPS 2 (droits 600, copié par Ansible sans affichage) | `SONAR_DB_PASSWORD` | Variable d'environnement | ✅ |
 | Token Docker Hub **en lecture seule** du VPS 2 | Téléchargement des images (le quota anonyme de l'IPv6 partagée était épuisé) | `/root/.docker/config.json` sur le VPS 2, lisible par root uniquement | `vps-ci-pull` | Personal access token, *Read-only*, expiration 30 j | ✅ |
+| Jeton de déclenchement GitLab (`jenkins-vps2`) | Jenkins, étape *Deploy (GitLab)* : lance la pipeline de déploiement | Credentials Jenkins (Secret text) ; révocable dans GitLab (*Settings → CI/CD → Pipeline trigger tokens*) | `gitlab-trigger-token` | Pipeline trigger token : **lance uniquement** la pipeline de ce projet, sans accès au code ni au serveur | ✅ |
 | Webhook GitHub → Jenkins | Déclenchement des builds | Aucun secret aujourd'hui : le webhook ne fait que demander à Jenkins de relire le dépôt | `/github-webhook/` | — | Amélioration prévue : secret partagé (HMAC) |
 | Token GitHub (si dépôt privé) | Jenkins, étape *Checkout* | Credentials Jenkins | `github` | Username with password (PAT *fine-grained*, lecture seule) | Non nécessaire : le fork est public |
 
@@ -79,7 +80,8 @@ Statut : ⏳ = à créer · ✅ = créé et stocké
 | Événement | Action |
 |---|---|
 | Secret exposé (commit, log, capture d'écran…) | 1) **Révoquer immédiatement** dans l'outil d'origine. 2) Générer un nouveau secret. 3) Mettre à jour Jenkins ou GitLab. 4) Relancer la pipeline. Supprimer le commit ne suffit pas : l'historique Git conserve la valeur. |
-| Fin du projet / après correction | Révoquer les tokens Docker Hub, SonarQube et GitHub, ainsi que la clé SSH de déploiement. |
+| Fin du projet / après correction | Révoquer les tokens Docker Hub, SonarQube et GitHub, le jeton de déclenchement GitLab, ainsi que la clé SSH de déploiement. |
+| Token temporaire de démonstration | Le token Docker Hub `demo-panne` (écriture, 1 jour), utilisé pour publier l'image de test du retour automatique, a été révoqué et l'image supprimée juste après la démonstration. |
 | Expiration d'un token | Générer un nouveau token, mettre à jour le credential (même identifiant), puis relancer un build pour vérifier. |
 
 ### 4.1 Incident traité : rotation de la clé de déploiement (09/11/2026)

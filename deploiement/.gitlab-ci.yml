@@ -4,8 +4,9 @@
 # Déploie sur le serveur de production une image DÉJÀ publiée par Jenkins
 # sur Docker Hub. Aucune image n'est reconstruite ici.
 #
-# Lancement : Build > Pipelines > New pipeline, champ « backend_tag »
-# (ex. 1.0.0-7fa9454). Rollback : relancer avec le tag précédent, ou
+# Lancement : automatique par Jenkins après un build vert (API trigger, input
+# backend_tag = tag publié). À la main : Build > Pipelines > New pipeline.
+# Rollback : relancer avec le tag précédent, ou
 # Operate > Environments > production > Re-deploy sur un déploiement antérieur.
 #
 # Variables CI/CD à définir dans le projet (Settings > CI/CD > Variables) :
@@ -33,7 +34,8 @@ variables:
   DEPLOY_DIR: /opt/souverainrecrut
   API_URL: https://api.tanguydavid.fr
 
-# La pipeline ne se lance que manuellement (formulaire ou API), jamais à chaque push
+# La pipeline n'est jamais lancée par un push sur ce dépôt : uniquement par Jenkins
+# (trigger), l'API ou le formulaire
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "trigger"

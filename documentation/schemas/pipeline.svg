@@ -15,7 +15,7 @@
   </defs>
 
   <rect width="1400" height="1050" fill="#ffffff"/>
-  <text x="700" y="38" text-anchor="middle" font-size="22" font-weight="700" fill="#1f2430">Pipeline CI/CD SouverainRecrut : du push à l'API déployée</text>
+  <text x="700" y="38" text-anchor="middle" font-size="22" font-weight="700" fill="#1f2430">Pipeline CI/CD SouverainRecrut : déploiement continu, du push à l'API en production</text>
 
   <!-- ===================== Développeur / GitHub ===================== -->
   <rect x="60" y="72" width="260" height="58" rx="8" class="box"/>
@@ -85,6 +85,7 @@
   <text x="438" y="394" text-anchor="middle" class="t">9. Publication</text>
   <text x="438" y="416" text-anchor="middle" class="s">docker push</text>
   <text x="438" y="435" text-anchor="middle" class="s">seulement si tout est vert</text>
+  <text x="438" y="454" text-anchor="middle" class="s">puis déclenche GitLab</text>
 
   <line x1="1100" y1="420" x2="1080" y2="420" class="arr"/>
   <line x1="840"  y1="420" x2="820"  y2="420" class="arr"/>
@@ -101,16 +102,21 @@
   <text x="440" y="555" text-anchor="middle" class="t">Docker Hub</text>
   <text x="440" y="577" text-anchor="middle" class="s">iamkrugs/souverainrecrut-backend:1.0.0-&lt;sha7&gt;</text>
 
-  <rect x="690" y="530" width="650" height="64" rx="8" fill="#f6f7f9" stroke="#8a93a6" stroke-dasharray="6 4"/>
-  <text x="1015" y="555" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1f2430">Aucun lien direct entre le VPS 2 et le VPS 1</text>
-  <text x="1015" y="577" text-anchor="middle" class="s">Docker Hub est la seule interface : la CI n'a aucun accès à la production</text>
+  <rect x="650" y="530" width="460" height="64" rx="8" fill="#f6f7f9" stroke="#8a93a6" stroke-dasharray="6 4"/>
+  <text x="880" y="555" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1f2430">Aucun lien direct entre le VPS 2 et le VPS 1</text>
+  <text x="880" y="577" text-anchor="middle" class="s">image via Docker Hub · ordre de déploiement via GitLab</text>
+
+  <!-- Jenkins déclenche GitLab -->
+  <line x1="1218" y1="500" x2="1218" y2="646" class="arr"/>
+  <text x="1232" y="556" class="lbl">10. Jenkins déclenche GitLab</text>
+  <text x="1232" y="575" class="lbl">jeton dédié · tag en input</text>
 
   <line x1="440" y1="594" x2="440" y2="646" class="arr" stroke-dasharray="5 4"/>
   <text x="452" y="624" class="lbl">tag vérifié par GitLab, image tirée par le VPS 1</text>
 
   <!-- ===================== GitLab ===================== -->
   <rect x="30" y="650" width="1340" height="150" rx="12" fill="#f3eefc" stroke="#7b3fe4" stroke-width="2"/>
-  <text x="50" y="674" class="lane" fill="#5b2bb5">GitLab CI/CD · gitlab.com · lancement manuel avec le tag à déployer (input backend_tag)</text>
+  <text x="50" y="674" class="lane" fill="#5b2bb5">GitLab CI/CD · gitlab.com · lancée par Jenkins (input backend_tag), ou à la main pour un retour arrière</text>
 
   <rect x="60" y="694" width="300" height="90" rx="8" class="box"/>
   <text x="210" y="718" text-anchor="middle" class="t">1. validate-tag</text>
