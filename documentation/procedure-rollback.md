@@ -48,6 +48,13 @@ docker compose pull && docker compose up -d --wait --wait-timeout 180
 echo "$(date -Is) rollback manuel -> <TAG_PRECEDENT>" >> deploy-history.log
 ```
 
+> **Démontré en production le 10/11/2026** (option B) :
+> - mise à jour `1.0.0-7fa9454 → 1.0.0-fae8904` par la pipeline ;
+> - puis *Re-deploy* de l'ancien déploiement, soit `1.0.0-fae8904 → 1.0.0-7fa9454 OK` ;
+> - l'API est revenue `READY` en moins d'une minute.
+>
+> Voir le rapport §11.7.
+
 ## 4. Restaurer la base, puis redéployer
 
 À utiliser quand la version à annuler a appliqué une migration (`prisma migrate deploy`) : l'ancien code n'est alors plus compatible avec le nouveau schéma.

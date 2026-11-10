@@ -560,6 +560,27 @@ Les secrets applicatifs **restent uniquement sur le serveur** : la pipeline ne m
 
 Procédure détaillée et **testée** (restauration de la base vérifiée sur une copie locale) : [`procedure-rollback.md`](documentation/procedure-rollback.md).
 
+**Démonstration 1, en production : mise à jour puis retour arrière manuel (10/11/2026)**
+
+| Heure (UTC) | Action | Historique du serveur (`deploy-history.log`) |
+|---|---|---|
+| 11:28 | Pipeline GitLab avec `backend_tag` = `1.0.0-fae8904` (dernière version publiée par Jenkins) | `1.0.0-7fa9454 -> 1.0.0-fae8904 OK (pipeline 3049336709)` |
+| 12:07 | *Operate → Environments → production → Re-deploy* sur l'ancien déploiement | `1.0.0-fae8904 -> 1.0.0-7fa9454 OK (pipeline 3045841142)` |
+
+Après le retour arrière :
+- la version en service est `1.0.0-7fa9454` (`docker compose images`) ;
+- `api` et `db` sont *healthy* ;
+- `https://api.tanguydavid.fr/v1/ready` répond `READY / CONNECTED` ;
+- une sauvegarde de la base a été prise **avant chaque** déploiement.
+
+Historique brut : [`deploiement/reports/deploy-history-2026-11-10.txt`](deploiement/reports/deploy-history-2026-11-10.txt).
+
+> Dans GitLab, la colonne *Commit* affiche le commit du **dépôt de déploiement** (version du `.gitlab-ci.yml`), et non celui de l'application. La version de l'API déployée est le **tag d'image** saisi au lancement : ce sont deux historiques distincts, celui du code (CI) et celui du déploiement (CD). *Re-deploy* rejoue le job d'origine avec sa propre version du script et son propre tag.
+
+![Mise à jour par la pipeline GitLab](documentation/captures/rollback-01-mise-a-jour.png)
+![Historique de l'environnement production avant le retour arrière](documentation/captures/rollback-02-environnement.png)
+![Retour arrière par Re-deploy](documentation/captures/rollback-03-redeploy.png)
+
 ### 11.8 Documentation de référence
 
 La liste complète des documents, avec leur emplacement et leur intérêt, se trouve en [section 0](#0-documents-du-livrable--où-les-trouver-et-pourquoi-les-lire).
