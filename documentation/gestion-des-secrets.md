@@ -19,16 +19,18 @@
 
 Statut : ⏳ = à créer · ✅ = créé et stocké
 
-### 2.1 Intégration continue (Jenkins, jour 1)
+### 2.1 Intégration continue (Jenkins + SonarQube, serveur de CI — VPS 2)
 
 | Secret | Utilisé par | Stocké dans | Identifiant de référence | Type | Statut |
 |---|---|---|---|---|---|
 | Token d'accès Docker Hub | Jenkins, étape *Publish* (`docker push`) | Credentials Jenkins | `dockerhub` | Username with password (utilisateur + token, *Read & Write*, expiration 30 j) | ✅ |
 | Token d'analyse SonarQube | Jenkins, étape *SonarQube* | Credentials Jenkins + config du serveur SonarQube dans Jenkins | `sonar-token` | Secret text (Global Analysis Token, expiration 30 j) | ✅ |
 | Mot de passe admin SonarQube | Administration de SonarQube | Gestionnaire de mots de passe personnel | — | — | ✅ (mot de passe par défaut `admin` changé au 1er login) |
-| Mot de passe admin Jenkins | Administration de Jenkins | Gestionnaire de mots de passe personnel | — | — | ⏳ à remplacer : le compte `admin` utilise encore le mot de passe initial (`initialAdminPassword`) |
+| Mot de passe admin Jenkins | Administration de Jenkins (exposé en HTTPS) | Gestionnaire de mots de passe personnel | — | — | ✅ mot de passe fort défini et fichier `initialAdminPassword` supprimé **avant** l'exposition sur Internet |
 | Token d'analyse locale SonarQube (`analyse-locale`) | Analyses manuelles depuis le poste | Saisi à la demande (`read -rs`), jamais écrit sur disque | `SONAR_TOKEN` (shell) | Project Analysis Token, expiration 30 j | ✅ |
-| Mot de passe de la base PostgreSQL de SonarQube | Conteneurs `sonarqube` / `sonar-db` | `integration-continue/lab/.env`, non versionné (généré par `openssl rand -hex 16`) | `SONAR_DB_PASSWORD` | Variable d'environnement | ✅ |
+| Mot de passe de la base PostgreSQL de SonarQube | Conteneurs `sonarqube` / `sonar-db` | `.env` du lab, non versionné (généré par `openssl rand -hex 16`) : poste d'administration, puis `/opt/souverainrecrut-ci/.env` sur le VPS 2 (droits 600, copié par Ansible sans affichage) | `SONAR_DB_PASSWORD` | Variable d'environnement | ✅ |
+| Token Docker Hub **en lecture seule** du VPS 2 | Téléchargement des images (le quota anonyme de l'IPv6 partagée était épuisé) | `/root/.docker/config.json` sur le VPS 2, lisible par root uniquement | `vps-ci-pull` | Personal access token, *Read-only*, expiration 30 j | ✅ |
+| Webhook GitHub → Jenkins | Déclenchement des builds | Aucun secret aujourd'hui : le webhook ne fait que demander à Jenkins de relire le dépôt | `/github-webhook/` | — | Amélioration prévue : secret partagé (HMAC) |
 | Token GitHub (si dépôt privé) | Jenkins, étape *Checkout* | Credentials Jenkins | `github` | Username with password (PAT *fine-grained*, lecture seule) | Non nécessaire : le fork est public |
 
 ### 2.2 Application Backend
@@ -87,7 +89,7 @@ Statut : ⏳ = à créer · ✅ = créé et stocké
 | Constat | Le contenu de la variable GitLab `SSH_PRIVATE_KEY` a été affiché puis capturé à l'écran pendant le diagnostic d'une erreur de format : la clé est considérée comme **exposée** |
 | Révocation | Le playbook Ansible gère `authorized_keys` du compte `souverainrecrut` en mode **exclusif** : seule la clé courante est conservée |
 | Rotation | Nouvelle clé générée (`ssh-keygen -t ed25519`), playbook rejoué (ancienne clé retirée, nouvelle ajoutée), variable GitLab remplacée |
-| Vérification | Une seule clé autorisée sur le serveur, d'empreinte identique à la nouvelle clé locale (`SHA256:dvwQGb…azXPI`) ; déploiement par la pipeline réussi avec la nouvelle clé ; compte `deploy` d'un autre projet non affecté |
+| Vérification | Une seule clé autorisée sur le serveur, d'empreinte identique à la nouvelle clé locale (`SHA256:dvwQGb…azXPI`) ; déploiement par la pipeline réussi avec la nouvelle clé ; autres comptes du serveur non affectés |
 | Mesure préventive | Ne jamais révéler une variable sensible pour une capture : les captures montrent la **liste** des variables, sans les valeurs |
 
 ## 5. Vérification avant livraison

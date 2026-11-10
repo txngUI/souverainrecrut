@@ -83,7 +83,7 @@ La sauvegarde contient aussi la table `_prisma_migrations`. Après restauration,
 
 | Élément | Retour arrière |
 |---|---|
-| Site Caddy de l'API | En root : `rm /root/caddy/sites/souverainrecrut.caddy && docker exec caddy-caddy-1 caddy reload --config /etc/caddy/Caddyfile` (les autres sites ne sont pas affectés) |
+| Site Caddy de l'API | En root : `rm /root/caddy/sites/souverainrecrut.caddy && docker exec caddy-caddy-1 caddy reload --config /etc/caddy/Caddyfile` (les autres services ne sont pas affectés) |
 | DNS `api.tanguydavid.fr` | `terraform destroy` dans `deploiement/terraform/` (ne supprime que les deux enregistrements créés) |
 | Arrêt complet de l'application | `docker compose down`. Le volume `db_data` est conservé ; ne **pas** ajouter `-v`, qui supprimerait les données |
 | Configuration système (SSH, comptes, Caddy) | Archive `/root/backup-avant-souverainrecrut-<date>.tar.gz`, prise avant toute modification |

@@ -4,7 +4,7 @@
 #   ansible-playbook playbook.yml --check --diff   # simulation, rien n'est modifié
 #   ansible-playbook playbook.yml --diff           # application
 #
-# Le serveur héberge déjà d'autres services (sites derrière Caddy, Minecraft).
+# Le serveur héberge déjà d'autres services, sans lien avec ce projet.
 # Toutes les tâches sont additives et idempotentes :
 #   - pas de mise à jour complète du système (apt upgrade) ni de redémarrage ;
 #   - Docker n'est installé que s'il est absent, et le service n'est jamais redémarré ;
@@ -97,7 +97,7 @@
           when: caddy_site.changed and not ansible_check_mode
           changed_when: false
 
-        - name: Recharger Caddy à chaud (sans coupure des autres sites)
+        - name: Recharger Caddy à chaud (sans coupure des autres services)
           ansible.builtin.command: >-
             docker exec {{ caddy_container }} caddy reload --config /etc/caddy/Caddyfile
           when: caddy_site.changed and not ansible_check_mode
@@ -113,7 +113,7 @@
 
         - name: Interrompre le playbook
           ansible.builtin.fail:
-            msg: "Configuration Caddy invalide : fichier retiré, les autres sites ne sont pas impactés."
+            msg: "Configuration Caddy invalide : fichier retiré, les autres services ne sont pas impactés."
 
     # ------------------------------------------------------------ Vérifications
     - name: Vérifier que l'utilisateur de déploiement peut piloter Docker

@@ -13,7 +13,7 @@
 2. [Architecture mise en œuvre](#2-architecture-mise-en-œuvre)
 3. [Tests automatisés et couverture](#3-tests-automatisés-et-couverture)
 4. [Analyse SonarQube et Quality Gate](#4-analyse-sonarqube-et-quality-gate)
-5. [Lab Jenkins](#5-lab-jenkins)
+5. [Serveur d'intégration continue (VPS 2)](#5-serveur-dintégration-continue-vps-2)
 6. [Pipeline CI (Jenkinsfile)](#6-pipeline-ci-jenkinsfile)
 7. [Image Docker et scan Trivy](#7-image-docker-et-scan-trivy)
 8. [Publication Docker Hub](#8-publication-docker-hub)
@@ -44,7 +44,7 @@ Ce rapport donne une **vue synthétique** de la démarche et des résultats. Le 
 |---|---|---|
 | [`README.md`](../integration-continue/README.md) | Mise en place des tests, lint, lab Jenkins + SonarQube, analyse Sonar, pipeline et image | Détail technique **complet** de la partie CI, avec toutes les commandes |
 | [`Jenkinsfile`](../integration-continue/Jenkinsfile) | Pipeline CI versionnée (*pipeline as code*) | Voir exactement les étapes et les **barrières bloquantes** exécutées par Jenkins |
-| [`lab/`](../integration-continue/lab/) | `docker-compose.yml` (Jenkins, SonarQube, PostgreSQL), image Jenkins, `.env.example` | **Recréer le lab** d'intégration continue |
+| [`lab/`](../integration-continue/lab/) | `docker-compose.yml` (Jenkins, SonarQube, PostgreSQL), surcouche `docker-compose.vps.yml` (Caddy HTTPS, limites mémoire), image Jenkins, `.env.example` | **Recréer le serveur d'intégration continue**, en local ou sur le VPS 2 |
 | [`reports/`](../integration-continue/reports/) | Rapport de couverture des tests, rapport Trivy complet | **Résultats bruts** des tests et du scan de l'image |
 | [`sonar/`](../integration-continue/sonar/) | Exports de l'API SonarQube avant et après corrections | **Résultats bruts** de l'analyse de qualité |
 
@@ -53,8 +53,8 @@ Ce rapport donne une **vue synthétique** de la démarche et des résultats. Le 
 | Élément | Contenu | Pourquoi le consulter |
 |---|---|---|
 | [`README.md`](../deploiement/README.md) | Serveur cible, Terraform, SSH, Ansible, Docker Compose, pipeline GitLab, problèmes rencontrés | Détail technique **complet** de la partie déploiement |
-| [`terraform/`](../deploiement/terraform/) | `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, verrou de version | Infrastructure décrite en code (DNS de l'API) |
-| [`ansible/`](../deploiement/ansible/) | Inventaire, playbook, variables, modèle Caddy | Préparation **automatisée et idempotente** du serveur |
+| [`terraform/`](../deploiement/terraform/) | `providers.tf`, `variables.tf`, `main.tf`, `outputs.tf`, verrou de version | Infrastructure décrite en code : DNS de l'API (VPS 1) et des outils de CI (VPS 2) |
+| [`ansible/`](../deploiement/ansible/) | Inventaire des deux VPS, `playbook.yml` (production), `playbook-ci.yml` (CI), tâches Docker communes, modèles Caddy | Préparation **automatisée et idempotente** des deux serveurs |
 | [`deployment/`](../deploiement/deployment/) | `docker-compose.yml`, `.env.example` | Description des services en production et de leur configuration (sans secret) |
 | [`.gitlab-ci.yml`](../deploiement/.gitlab-ci.yml) | Pipeline de déploiement | Voir comment un tag est validé, déployé, vérifié, et annulé automatiquement en cas d'échec |
 | [`reports/`](../deploiement/reports/) | Sorties de la simulation et de l'application Ansible | **Résultats bruts** de la préparation du serveur |
@@ -80,24 +80,50 @@ SouverainRecrut est une API REST de gestion du recrutement, développée avec No
 
 > 📄 Version détaillée, avec flux, réseau, secrets et justification des choix : [`architecture.md`](architecture.md)
 
+### 2.1 Deux VPS qui interagissent : la CI séparée de la production
+
+La chaîne s'appuie sur **deux serveurs distincts**, comme le recommande la bonne pratique : **l'environnement qui construit le logiciel est séparé de celui qui l'exécute**.
+
+| Serveur | Rôle | Services |
+|---|---|---|
+| **VPS 2 — intégration continue** | Construire, tester, analyser, publier | Jenkins, SonarQube + PostgreSQL, Caddy (HTTPS) : `jenkins.tanguydavid.fr`, `sonar.tanguydavid.fr` |
+| **VPS 1 — production** | Exécuter l'API | API + PostgreSQL (Docker Compose) derrière Caddy : `api.tanguydavid.fr` |
+
+**Comment ils interagissent :**
+
+| Interaction | Sens | Moyen |
+|---|---|---|
+| Un push déclenche la CI | GitHub → **VPS 2** | Webhook HTTPS (`/github-webhook/`) |
+| La CI publie une image validée | **VPS 2** → Docker Hub | `docker push`, compte authentifié |
+| Le déploiement est commandé | GitLab → **VPS 1** | SSH, clé dédiée, compte sans sudo |
+| La production récupère l'image | Docker Hub → **VPS 1** | `docker pull` du tag demandé |
+| CI → production | **VPS 2 ✕ VPS 1** | **Aucun lien direct** : le registre est la seule interface |
+
+**Pourquoi c'est la bonne pratique :**
+- **Moindre privilège :** Jenkins exécute du code et pilote Docker. Le compromettre ne donne **aucun accès** à la production : il n'en possède ni clé ni identifiant.
+- **Isolation des ressources :** les builds (npm, tests, analyse, image) ne consomment jamais la mémoire ni le CPU de l'API.
+- **Indépendance :** la CI peut être arrêtée ou reconstruite sans coupure de l'API, et une version publiée reste déployable même si la CI est indisponible.
+- **Traçabilité :** le seul passage entre les deux mondes est un tag d'image immuable.
+
+### 2.2 Vue d'ensemble
+
 ```
-Développeur ──git push──▶ GitHub (branche Dev)
-                              │  Poll SCM (5 min)
-                              ▼
-┌──────────────── Lab local (Docker Compose) ─────────────────┐
-│  Jenkins ──analyse──▶ SonarQube ──▶ PostgreSQL (sonar-db)    │
-│     ▲                    │                                   │
-│     └──── webhook ───────┘  (résultat du Quality Gate)       │
-│     │                                                        │
-│     └──▶ Docker (hôte) : build image + scan Trivy            │
-└──────────────────────────────────────────────────────────────┘
-                              │  docker push (si tout est vert)
-                              ▼
-                 Docker Hub : iamkrugs/souverainrecrut-backend
-                              │  docker pull (jour 2)
-                              ▼
-   VPS Ubuntu 24.04 : Caddy (HTTPS) → API + PostgreSQL (Compose)
+Développeur ──git push──▶ GitHub (Dev) ──webhook──┐                 GitHub ──subtree──▶ GitLab.com
+                                                   ▼                                    (pipeline de
+┌─────────────── VPS 2 : INTÉGRATION CONTINUE ───────────────┐                          déploiement)
+│ Caddy HTTPS ─▶ Jenkins ──analyse──▶ SonarQube ─▶ PostgreSQL │                               │
+│                  ▲ ◀──── Quality Gate ────┘                 │                               │ SSH
+│                  └─▶ build de l'image + scan Trivy          │                               │
+└──────────────────────────────┬──────────────────────────────┘                               │
+                               │ docker push (si tout est vert)                               │
+                               ▼                                                              ▼
+                 Docker Hub : iamkrugs/souverainrecrut-backend ──docker pull──▶ ┌─── VPS 1 : PRODUCTION ───┐
+                               :<version>-<sha7>                                │ Caddy HTTPS ─▶ API ─▶ PG │
+                                                                                └──────────────────────────┘
+                     Aucun lien direct entre le VPS 2 et le VPS 1
 ```
+
+### 2.3 Outils
 
 | Outil | Rôle |
 |---|---|
@@ -108,9 +134,11 @@ Développeur ──git push──▶ GitHub (branche Dev)
 | **Jenkins** | Orchestration de la pipeline, décrite dans un Jenkinsfile versionné |
 | **Docker** | Construction d'une image immuable et reproductible |
 | **Trivy** | Scan des vulnérabilités de l'image avant publication |
-| **Docker Hub** | Registre de l'image versionnée, récupérée par le déploiement |
+| **Docker Hub** | Registre de l'image versionnée : **unique interface entre les deux VPS** |
+| **Terraform** | DNS `api`, `jenkins`, `sonar` (provider Hostinger) |
+| **Ansible** | Préparation des deux serveurs (`playbook.yml`, `playbook-ci.yml`) |
+| **GitLab CI/CD** | Déploiement d'un tag d'image sur le VPS 1 |
 
-![Lab Docker : services démarrés](captures/lab-01-docker-compose-ps.png)
 
 ## 3. Tests automatisés et couverture
 
@@ -157,32 +185,48 @@ Exports bruts de l'API : [`integration-continue/sonar/`](../integration-continue
 ![SonarQube — avant corrections](captures/sonar-01-overview-avant.png)
 ![SonarQube — après corrections](captures/sonar-02-overview-apres.png)
 
-## 5. Lab Jenkins
+## 5. Serveur d'intégration continue (VPS 2)
 
-> 📄 Fichiers du lab : [`integration-continue/lab/`](../integration-continue/lab/) · Mise en place : [`integration-continue/README.md`](../integration-continue/README.md) §4 · Secrets du lab : [`gestion-des-secrets.md`](gestion-des-secrets.md) §2.1
+> 📄 Lab : [`integration-continue/lab/`](../integration-continue/lab/) (`docker-compose.yml` + surcouche `docker-compose.vps.yml`) · Préparation du serveur : [`deploiement/ansible/playbook-ci.yml`](../deploiement/ansible/playbook-ci.yml) · DNS : [`deploiement/terraform/`](../deploiement/terraform/) · Secrets : [`gestion-des-secrets.md`](gestion-des-secrets.md) §2.1
 
-Jenkins et SonarQube tournent en local via `integration-continue/lab/docker-compose.yml`. Le VPS de production est réservé au déploiement.
+### 5.1 Démarche : valider en local, puis migrer
+
+| Étape | Réalisation |
+|---|---|
+| 1. Lab local | Jenkins + SonarQube + PostgreSQL en Docker Compose sur le poste, accessibles en `127.0.0.1`. Configuration complète et premiers builds validés. Déclenchement par *Poll SCM*, car GitHub ne peut pas joindre un poste local. |
+| 2. DNS | Terraform ajoute `jenkins.tanguydavid.fr` et `sonar.tanguydavid.fr` (A + AAAA) vers le VPS 2 : `4 to add, 0 to change, 0 to destroy` |
+| 3. Préparation du VPS 2 | Ansible (`playbook-ci.yml`) : dépendances, `vm.max_map_count` pour SonarQube, Docker (tâches communes avec la production), **pare-feu `ufw`** (22, 80, 443 uniquement), fichiers du lab, Caddy |
+| 4. Migration | Les volumes Docker (Jenkins, base et données de SonarQube) sont transférés du poste vers le VPS 2 par SSH. Le job, les credentials, le projet SonarQube, le Quality Gate et le webhook sont **conservés à l'identique**. SonarQube redémarre avec le même identifiant de serveur. |
+| 5. Démarrage | `ansible-playbook playbook-ci.yml --tags start` : construction de l'image Jenkins et démarrage. Certificats Let's Encrypt obtenus automatiquement par Caddy. |
+| 6. Déclenchement par webhook | Plugin Jenkins `github` et `githubPush()` dans le Jenkinsfile. Webhook GitHub → `https://jenkins.tanguydavid.fr/github-webhook/` : le build démarre **dès le push** (*« Started by GitHub push »*). |
+
+![Lab local (étape 1) : services démarrés](captures/lab-01-docker-compose-ps.png)
+
+### 5.2 Configuration
 
 | Élément | Configuration |
 |---|---|
-| Image Jenkins | LTS JDK 21 + Docker CLI + Node.js 22 + plugins (Git, Pipeline, SonarQube, Credentials Binding) |
-| Accès Docker | Socket de l'hôte monté : build et scan sans Docker-in-Docker |
-| SonarQube | Serveur `sonarqube` déclaré dans Jenkins, scanner installé automatiquement |
-| Webhook | SonarQube → `http://jenkins:8080/sonarqube-webhook/` |
-| Déclencheur | Poll SCM toutes les 5 minutes |
+| Image Jenkins | LTS JDK 21 + Docker CLI + Node.js 22 + plugins (Git, Pipeline, SonarQube, Credentials Binding, GitHub) |
+| Exposition | Caddy en HTTPS ; Jenkins et SonarQube ne publient **aucun port** ; pare-feu : 22, 80, 443 uniquement |
+| Accès | Compte administrateur Jenkins avec mot de passe fort (mot de passe initial supprimé avant l'exposition), aucun accès anonyme ; SonarQube avec authentification obligatoire |
+| Ressources | Limites mémoire : Jenkins 3 Go, SonarQube 3 Go (Java bridé), base 512 Mo, Caddy 256 Mo ; images supprimées après chaque build pour préserver le disque |
+| Docker Hub | Serveur authentifié (token en lecture seule) : le quota anonyme de téléchargement, partagé par l'IPv6 de l'hébergeur, était épuisé (`429 Too Many Requests`) |
+| SonarQube | Serveur `sonarqube` déclaré dans Jenkins ; webhook Quality Gate → `http://jenkins:8080/sonarqube-webhook/` (réseau Docker interne) |
 
-**Choix et compromis :**
-- **Ports liés à `127.0.0.1` :** rien n'est exposé sur le réseau local. Contrepartie : GitHub ne peut pas joindre Jenkins, d'où le *Poll SCM* au lieu d'un webhook GitHub.
-- **Socket Docker monté :** simple et suffisant pour un lab. En production, on utiliserait un agent dédié ou un builder sans daemon.
-- **Validation des webhooks locaux désactivée dans SonarQube :** acceptable ici uniquement parce que SonarQube n'est pas exposé.
+**Compromis assumé :** Jenkins pilote Docker via le socket de l'hôte, ce qui lui donne des droits élevés **sur le VPS 2**. C'est précisément pour cette raison que la CI est sur un serveur séparé, sans aucun accès à la production.
 
+![DNS du serveur de CI : terraform plan](captures/ci-01-terraform-plan.png)
+![DNS du serveur de CI : terraform apply](captures/ci-02-terraform-apply.png)
+![Webhook GitHub vers Jenkins (livraison réussie)](captures/ci-05-github-webhook.png)
+![Build déclenché par un push GitHub](captures/ci-06-jenkins-github-push.png)
+![Pipeline sur le serveur de CI](captures/ci-07-pipeline-vps.png)
 ![Webhook SonarQube vers Jenkins](captures/sonar-03-webhook-jenkins.png)
 ![Credentials Jenkins (valeurs masquées)](captures/jenkins-01-credentials.png)
 ![Configuration du job](captures/jenkins-02-job-config.png)
 
 ## 6. Pipeline CI (Jenkinsfile)
 
-Fichier versionné : [`integration-continue/Jenkinsfile`](../integration-continue/Jenkinsfile)
+Fichier versionné : [`integration-continue/Jenkinsfile`](../integration-continue/Jenkinsfile). Déclenchement : **webhook GitHub** (`githubPush()`) à chaque push sur `Dev`.
 
 | # | Étape | Rôle | Échec si… |
 |---|---|---|---|
@@ -193,7 +237,7 @@ Fichier versionné : [`integration-continue/Jenkinsfile`](../integration-continu
 | 5 | Tests | Tests + couverture | test rouge ou couverture < 80 % |
 | 6 | SonarQube | Envoie l'analyse | — |
 | 7 | Quality Gate | Attend le verdict de SonarQube (webhook) | gate rouge |
-| 8 | Docker build | Image taguée et étiquetée (version, commit, source) | build KO |
+| 8 | Docker build | Connexion à Docker Hub, puis image taguée et étiquetée (version, commit, source) | build KO |
 | 9 | Trivy | Rapport archivé + contrôle bloquant | HIGH/CRITICAL corrigeable non justifiée |
 | 10 | Publish | `docker push` (branche `Dev` uniquement) | authentification KO |
 
@@ -257,7 +301,7 @@ Le token est masqué (`echo ****`) dans les logs. L'avertissement Docker sur le 
 
 ## 10. Bilan et pistes d'amélioration
 
-**Bilan :** la chaîne CI est complète et automatisée, de `git push` à l'image publiée. Elle comporte trois barrières bloquantes : tests et couverture, Quality Gate, Trivy.
+**Bilan :** la chaîne est complète et répartie sur **deux VPS qui interagissent sans lien direct**. Un `git push` déclenche immédiatement la CI sur le VPS 2, qui ne publie l'image que si trois barrières bloquantes sont franchies : tests et couverture, Quality Gate, Trivy. Le déploiement sur le VPS 1 se fait ensuite par GitLab, à partir de ce tag.
 
 **Démonstration d'un blocage :** le build n°2 a été rejoué (*Replay*) avec un seuil Trivy durci (`--severity MEDIUM,HIGH,CRITICAL`). Trivy détecte les 3 vulnérabilités MEDIUM et renvoie un code de sortie non nul. L'étape *Trivy* échoue, *Publish* n'est pas exécutée et aucune image n'est poussée. Le Quality Gate, lui, reste *Passed* : chaque barrière est indépendante.
 
@@ -266,22 +310,23 @@ Le token est masqué (`echo ****`) dans les logs. L'avertissement Docker sur le 
 **Pistes d'amélioration :**
 
 - Migrer vers Prisma 7, ce qui lève l'exception Trivy.
-- Exposer Jenkins de façon sécurisée pour remplacer le Poll SCM par un webhook GitHub.
+- Signer le webhook GitHub avec un secret partagé (HMAC), vérifié par Jenkins.
+- Déclencher automatiquement la pipeline GitLab à la fin d'un build Jenkins vert (*trigger token*).
 - Ajouter un scan de secrets (gitleaks) et un audit de dépendances (`npm audit`) dans la pipeline.
-- Construire l'image sur un agent dédié plutôt que via le socket Docker de l'hôte.
+- Construire l'image sur un agent de build dédié ou sans daemon (BuildKit rootless), plutôt que via le socket Docker du VPS 2.
 
 ## 11. Déploiement (jour 2)
 
 Documentation technique détaillée : [`deploiement/README.md`](../deploiement/README.md)
 
-### 11.1 Serveur cible
+### 11.1 Serveur cible (VPS 1, production)
 
 Le serveur cible est un **VPS** (PulseHeberg, Ubuntu 24.04, IP publique) au lieu d'une VM VMware locale :
 
 - il est joignable par les runners GitLab.com, ce qui n'est pas possible pour une VM en NAT ;
 - il est représentatif d'une vraie production : exposition Internet, DNS, TLS.
 
-Ce serveur héberge déjà d'autres services (sites derrière Caddy, Minecraft). Le déploiement est donc **isolé** :
+Ce serveur héberge déjà d'autres services, sans lien avec ce projet. Le déploiement est donc **isolé** :
 
 - un projet Compose dédié ;
 - aucun port public ouvert ;
@@ -319,7 +364,7 @@ PulseHeberg n'ayant pas de provider Terraform, le VPS est créé manuellement (c
 | Clé personnelle (`id_ed25519`) | Ansible, depuis le poste d'administration | `root` | Administration du serveur |
 | Clé de déploiement (`souverainrecrut_deploy`) | GitLab CI | `souverainrecrut` | Groupe `docker`, **sans sudo**, mot de passe verrouillé |
 
-Un compte `deploy` existait déjà sur le serveur pour un autre projet. Un **compte dédié** a été créé : chaque projet peut ainsi être révoqué indépendamment, et ses connexions sont traçables séparément dans les journaux SSH.
+Un **compte dédié** au projet a été créé : il peut être révoqué indépendamment des autres comptes du serveur, et ses connexions sont traçables séparément dans les journaux SSH.
 
 ### 11.4 Ansible : préparation du serveur
 
@@ -605,4 +650,34 @@ ssh -i ~/.ssh/souverainrecrut_deploy souverainrecrut@45.155.170.40 whoami       
 # GitLab : Settings > CI/CD > Variables > SSH_PRIVATE_KEY remplacée (sans capture de la valeur)
 # GitLab : Build > Pipelines > New pipeline > input backend_tag = 1.0.0-7fa9454
 git subtree push --prefix deploiement gitlab main                                         # à chaque modification de deploiement/
+```
+
+### A.14 Serveur d'intégration continue (VPS 2)
+
+```bash
+# DNS jenkins / sonar (deploiement/terraform/)
+terraform plan -out=tfplan                     # 4 to add, 0 to change, 0 to destroy
+terraform apply tfplan
+
+# Préparation du serveur (deploiement/ansible/)
+ansible-playbook playbook-ci.yml --check --diff
+ansible-playbook playbook-ci.yml --diff
+
+# Docker Hub authentifié sur le VPS 2 (token en lecture seule, saisi sans affichage)
+ssh -t root@185.216.25.110 'read -rsp "Token : " T && echo && echo "$T" | docker login -u iamkrugs --password-stdin; unset T'
+
+# Migration des volumes du lab local (integration-continue/lab/)
+docker compose stop
+for v in jenkins_home sonar_db sonar_data sonar_extensions; do
+  docker run --rm -v souverainrecrut-ci_$v:/v:ro alpine tar czf - -C /v . \
+  | ssh root@185.216.25.110 "docker volume create --label com.docker.compose.project=souverainrecrut-ci \
+      --label com.docker.compose.volume=$v souverainrecrut-ci_$v >/dev/null \
+      && docker run --rm -i -v souverainrecrut-ci_$v:/v alpine tar xzf - -C /v"
+done
+
+# Démarrage (deploiement/ansible/)
+ansible-playbook playbook-ci.yml --tags start
+curl -s https://sonar.tanguydavid.fr/api/system/status   # "status":"UP"
+
+# GitHub : Settings > Webhooks > https://jenkins.tanguydavid.fr/github-webhook/ (push, JSON)
 ```

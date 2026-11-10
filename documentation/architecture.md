@@ -3,112 +3,126 @@
 **Périmètre :** API Backend SouverainRecrut (Node.js 22, Express, TypeScript, Prisma, PostgreSQL). Le frontend est hors périmètre.
 **Principe :** une modification du code devient une image Docker testée, analysée, scannée et versionnée. Cette image, et seulement elle, est ensuite déployée en production. Elle n'est jamais reconstruite au déploiement.
 
-## 1. Vue d'ensemble
+## 1. Deux serveurs séparés : intégration continue et production
+
+La chaîne repose sur **deux VPS distincts**, conformément à la bonne pratique qui consiste à **séparer l'environnement qui construit le logiciel de celui qui l'exécute** :
+
+| Serveur | Rôle | Contenu |
+|---|---|---|
+| **VPS 2 — intégration continue** (`185.216.25.110`) | Construire, tester, analyser, publier | Jenkins, SonarQube + PostgreSQL, Caddy (HTTPS). Joignable sur `jenkins.tanguydavid.fr` et `sonar.tanguydavid.fr`. |
+| **VPS 1 — production** (`45.155.170.40`) | Exécuter l'API | API + PostgreSQL (Docker Compose), derrière le reverse proxy Caddy du serveur. Joignable sur `api.tanguydavid.fr`. |
+
+**Les deux serveurs interagissent sans se connaître :** il n'existe **aucun lien direct** entre eux. Le serveur de CI n'a ni accès SSH ni identifiant pour la production. Ils communiquent uniquement par l'intermédiaire de **Docker Hub**, qui sert d'interface : le VPS 2 y publie une image, et le VPS 1 la récupère quand GitLab le lui demande.
+
+| Bénéfice | Explication |
+|---|---|
+| **Sécurité (moindre privilège)** | Jenkins exécute du code et pilote Docker, donc il dispose de droits élevés sur sa machine. Compromettre la CI ne donne **aucun accès** à la production ni à ses données. |
+| **Isolation des ressources** | Les builds (npm, tests, analyse, construction d'image) consomment CPU, RAM et disque sur le VPS 2, sans jamais ralentir l'API en production. |
+| **Indépendance** | La CI peut être arrêtée, mise à jour ou reconstruite sans interrompre la production, et inversement. Une version déjà publiée reste déployable même si la CI est indisponible. |
+| **Traçabilité** | Le seul point de passage est un tag d'image immuable : on sait exactement quelle version a quitté la CI et laquelle tourne en production. |
+
+## 2. Vue d'ensemble
 
 ```
- ┌──────────────┐  git push (Dev)   ┌──────────────────────────────────────────────────────┐
- │ Développeur  │──────────────────▶│ GitHub : txngUI/souverainrecrut                      │
- └──────────────┘                   └──────────────────────────────────────────────────────┘
-                                           │ Poll SCM (5 min)               │ git subtree push
-                                           ▼                                ▼  (dossier deploiement/)
- ┌──────────── INTÉGRATION CONTINUE : lab local (Docker Compose) ─┐  ┌───────────────────────────┐
- │                                                                 │  │ GitLab.com                │
- │  Jenkins ──analyse──▶ SonarQube ──▶ PostgreSQL (sonar-db)       │  │ tanguy-cicd/              │
- │    ▲  ◀──webhook Quality Gate──┘                                │  │ souverainrecrut-deploiement│
- │    │                                                            │  │                           │
- │    └─▶ Docker de l'hôte : build de l'image + scan Trivy         │  │ Pipeline (manuelle,       │
- │                                                                 │  │ input backend_tag)        │
- └───────────────────────────────┬─────────────────────────────────┘  │ validate → deploy → verify│
-                                 │ docker push (si tout est vert)     └─────────────┬─────────────┘
-                                 ▼                                                  │ SSH (clé dédiée)
-              ┌──────────────────────────────────────────┐   docker pull            │
-              │ Docker Hub : iamkrugs/souverainrecrut-   │◀─────────────────────────┐│
-              │ backend:<version>-<sha7>                 │                          ││
-              └──────────────────────────────────────────┘                          ▼▼
- ┌──────────── DÉPLOIEMENT : VPS Ubuntu 24.04 (préparé par Ansible) ───────────────────────────┐
- │                                                                                              │
- │  Internet ──HTTPS 443──▶ Caddy (conteneur existant, certificat Let's Encrypt)               │
- │                              │ réseau Docker « web »                                        │
- │                              ▼                                                              │
- │                    souverainrecrut-api:4000 ──réseau interne « backend »──▶ PostgreSQL 17   │
- │                    (conteneur API)          ▲                               (volume db_data) │
- │                    migrate (prisma migrate deploy, ponctuel) ┘                               │
- └──────────────────────────────────────────────────────────────────────────────────────────────┘
-        ▲
-        │ DNS api.tanguydavid.fr (A + AAAA) géré par Terraform (provider Hostinger)
+                       ┌────────────────────────────────────────────┐
+  Développeur ─push──▶ │ GitHub : txngUI/souverainrecrut (Dev)      │
+                       └────────────────────────────────────────────┘
+                            │ webhook HTTPS                 │ git subtree push
+                            ▼ (à chaque push)               ▼ (dossier deploiement/)
+ ┌──────── VPS 2 : INTÉGRATION CONTINUE ─────────┐   ┌──────────────────────────────┐
+ │ Caddy (HTTPS) ─▶ Jenkins ─analyse─▶ SonarQube │   │ GitLab.com                   │
+ │                    ▲  ◀─Quality Gate─┘   │    │   │ tanguy-cicd/                 │
+ │                    │                PostgreSQL│   │ souverainrecrut-deploiement  │
+ │                    └─▶ build + scan Trivy     │   │ validate → deploy → verify   │
+ └───────────────────────────┬───────────────────┘   └──────────────┬───────────────┘
+                             │ docker push                          │ SSH (clé dédiée,
+                             ▼ (si tout est vert)                   │ sans sudo)
+              ┌─────────────────────────────────┐   docker pull     │
+              │ Docker Hub                       │◀────────────────┐│
+              │ iamkrugs/souverainrecrut-backend │                 ││
+              │ :<version>-<sha7>                │                 ▼▼
+              └─────────────────────────────────┘   ┌──────────────────────────────────┐
+                                                    │ VPS 1 : PRODUCTION               │
+          Aucun lien direct VPS 2 ──✕──▶ VPS 1      │ Caddy (HTTPS) ─▶ API ─▶ PostgreSQL│
+                                                    │ (réseau interne, volume db_data) │
+                                                    └──────────────────────────────────┘
+
+ DNS (Terraform, provider Hostinger) : api → VPS 1 · jenkins, sonar → VPS 2
 ```
 
-## 2. Composants et rôles
+## 3. Composants et rôles
 
 | Composant | Où | Rôle |
 |---|---|---|
-| **GitHub** | github.com | Source de vérité du code et des livrables. La branche `Dev` déclenche l'intégration continue. |
-| **Jenkins** | Lab local, Docker Compose (`integration-continue/lab/`) | Orchestration de la CI à partir du `Jenkinsfile` versionné |
-| **SonarQube** + PostgreSQL | Lab local | Analyse statique et Quality Gate (*Sonar way*) |
-| **Trivy** | Conteneur lancé par Jenkins | Scan des vulnérabilités de l'image avant publication |
-| **Docker Hub** | hub.docker.com | Registre de l'image versionnée ; point de passage entre la CI et le déploiement |
-| **Terraform** | Poste d'administration → API Hostinger | Enregistrements DNS `api.tanguydavid.fr` (A, AAAA) |
-| **Ansible** | Poste d'administration → VPS (SSH root par clé) | Préparation idempotente du serveur : dépendances, Docker, compte de déploiement, site Caddy |
-| **GitLab CI/CD** | GitLab.com (runners hébergés) | Déploiement d'un tag d'image sur le serveur, vérification, retour arrière automatique |
-| **Caddy** | VPS, conteneur existant | Reverse proxy HTTPS, certificat automatique |
-| **API** | VPS, conteneur `api` | Service applicatif, sans port publié |
-| **PostgreSQL 17** | VPS, conteneur `db` | Base de données, volume persistant `db_data`, réseau interne uniquement |
+| **GitHub** | github.com | Source de vérité du code et des livrables. Chaque push sur `Dev` prévient Jenkins par webhook. |
+| **Jenkins** | VPS 2, conteneur | Orchestration de la CI à partir du `Jenkinsfile` versionné |
+| **SonarQube** + PostgreSQL | VPS 2, conteneurs | Analyse statique et Quality Gate (*Sonar way*) |
+| **Caddy** (CI) | VPS 2, conteneur | HTTPS (Let's Encrypt) pour Jenkins et SonarQube ; seul service exposé du VPS 2 |
+| **Trivy** | VPS 2, conteneur lancé par Jenkins | Scan des vulnérabilités de l'image avant publication |
+| **Docker Hub** | hub.docker.com | Registre de l'image versionnée : **unique interface entre les deux VPS** |
+| **Terraform** | Poste d'administration → API Hostinger | Enregistrements DNS `api`, `jenkins`, `sonar` (A + AAAA) |
+| **Ansible** | Poste d'administration → VPS 1 et VPS 2 (SSH root par clé) | Préparation idempotente des deux serveurs (`playbook.yml` pour la production, `playbook-ci.yml` pour la CI) |
+| **GitLab CI/CD** | GitLab.com (runners hébergés) | Déploiement d'un tag d'image sur le VPS 1, vérification, retour arrière automatique |
+| **API** | VPS 1, conteneur `api` | Service applicatif, sans port publié |
+| **PostgreSQL 17** | VPS 1, conteneur `db` | Base de l'application, volume persistant `db_data`, réseau interne uniquement |
 
-## 3. Flux : de la modification du code à l'API déployée
+## 4. Flux : de la modification du code à l'API déployée
 
-| # | Étape | Outil | Barrière |
+| # | Étape | Où | Barrière |
 |---|---|---|---|
-| 1 | `git push` sur `Dev` | Git / GitHub | — |
-| 2 | Détection du commit (≤ 5 min) | Jenkins (*Poll SCM*) | — |
-| 3 | `npm ci`, `prisma generate`, ESLint, Prettier | Jenkins | Lint ou formatage en échec |
-| 4 | Tests + couverture | Jest, supertest | Test rouge ou couverture < 80 % |
-| 5 | Analyse et Quality Gate | SonarQube | Gate rouge |
-| 6 | Build de l'image `1.0.0-<sha7>` | Docker | Build en échec |
-| 7 | Scan de l'image | Trivy | HIGH/CRITICAL corrigeable non justifiée |
-| 8 | Publication | Docker Hub | (seulement si 3 à 7 sont verts) |
-| 9 | Lancement du déploiement avec ce tag | GitLab (*New pipeline*) | Tag invalide ou absent de Docker Hub |
-| 10 | Sauvegarde de la base, pull, migrations, démarrage | GitLab → SSH → Docker Compose | Migration ou healthcheck en échec : **retour automatique au tag précédent** |
-| 11 | Vérification publique `/v1/ready` | GitLab | API non `READY` |
+| 1 | `git push` sur `Dev` | GitHub | — |
+| 2 | Webhook → Jenkins (**immédiat**) | GitHub → VPS 2 | — |
+| 3 | `npm ci`, `prisma generate`, ESLint, Prettier | VPS 2 | Lint ou formatage en échec |
+| 4 | Tests + couverture | VPS 2 | Test rouge ou couverture < 80 % |
+| 5 | Analyse et Quality Gate | VPS 2 (SonarQube) | Gate rouge |
+| 6 | Build de l'image `1.0.0-<sha7>` | VPS 2 | Build en échec |
+| 7 | Scan de l'image | VPS 2 (Trivy) | HIGH/CRITICAL corrigeable non justifiée |
+| 8 | Publication | VPS 2 → Docker Hub | (seulement si 3 à 7 sont verts) |
+| 9 | Lancement du déploiement avec ce tag | GitLab | Tag invalide ou absent de Docker Hub |
+| 10 | Sauvegarde de la base, pull, migrations, démarrage | GitLab → SSH → VPS 1 | Migration ou healthcheck en échec : **retour automatique au tag précédent** |
+| 11 | Vérification publique `/v1/ready` | GitLab → VPS 1 | API non `READY` |
 
-**Traçabilité :** le tag `<version>-<sha7>` et les labels OCI (`revision`, `version`, `source`) relient l'image déployée au commit exact. Côté serveur, `deploy-history.log` et l'environnement GitLab `production` conservent l'historique des versions déployées.
+**Traçabilité :** le tag `<version>-<sha7>` et les labels OCI (`revision`, `version`, `source`) relient l'image déployée au commit exact. Sur le VPS 1, `deploy-history.log` et l'environnement GitLab `production` conservent l'historique des versions déployées.
 
-## 4. Réseau et exposition
+## 5. Réseau et exposition
 
-| Élément | Exposition |
-|---|---|
-| Jenkins, SonarQube | `127.0.0.1` du poste local uniquement |
-| API | Aucun port publié ; joignable par Caddy via le réseau Docker `web` (alias `souverainrecrut-api`) |
-| PostgreSQL | Réseau Docker `backend` **interne** (sans accès Internet) ; injoignable depuis `web` (vérifié) |
-| Accès public | `https://api.tanguydavid.fr` (443, TLS Let's Encrypt) via Caddy |
-| Administration | SSH : `root` par clé (Ansible), `souverainrecrut` par clé dédiée, sans sudo (GitLab) |
+| Serveur | Exposé | Non exposé |
+|---|---|---|
+| VPS 2 (CI) | 443 (HTTPS : Jenkins, SonarQube), 80 (redirection et certificats), 22 (SSH par clé). Pare-feu `ufw` : tout le reste est refusé. | Ports de Jenkins et SonarQube (joignables seulement par Caddy, sur le réseau Docker interne), base de SonarQube |
+| VPS 1 (production) | 443 via le reverse proxy existant, 22 (SSH) | API (aucun port publié, jointe par Caddy via le réseau `web`), PostgreSQL (réseau interne `backend`, sans accès Internet) |
 
-Le serveur héberge d'autres services (sites, Minecraft). Le déploiement en est isolé :
+Sur le VPS 1, qui héberge aussi d'autres services sans lien avec le projet, le déploiement est isolé :
 - projet Compose dédié (`/opt/souverainrecrut`) ;
 - fichier Caddy dédié ;
 - compte dédié ;
 - aucun port ouvert ;
 - le service Docker n'est jamais redémarré.
 
-## 5. Secrets
+## 6. Secrets
 
 | Secret | Emplacement |
 |---|---|
-| Tokens SonarQube et Docker Hub (CI) | Credentials Jenkins (masqués dans les logs) |
+| Tokens SonarQube et Docker Hub (CI) | Credentials Jenkins, sur le VPS 2 (masqués dans les logs) |
+| Mot de passe de la base SonarQube | `.env` du lab sur le VPS 2 (droits 600) |
+| Token Docker Hub en lecture seule (téléchargements du VPS 2) | `/root/.docker/config.json` sur le VPS 2 (root uniquement) |
 | Token API Hostinger | Saisi à la demande dans le shell (`HOSTINGER_API_TOKEN`) |
-| Clé SSH de déploiement | Variable GitLab de type *File*, protégée ; clé publique gérée par Ansible (mode exclusif) |
-| `POSTGRES_PASSWORD`, `JWT_SECRET` | **Uniquement sur le serveur** (`/opt/souverainrecrut/.env`, droits 600), générés sur place |
+| Clé SSH de déploiement | Variable GitLab de type *File*, protégée ; clé publique gérée par Ansible (mode exclusif) sur le VPS 1 |
+| `POSTGRES_PASSWORD`, `JWT_SECRET` | **Uniquement sur le VPS 1** (`/opt/souverainrecrut/.env`, droits 600), générés sur place |
 
-Aucun secret n'est présent dans le dépôt, les images ou les logs (scan gitleaks : `no leaks found`). Inventaire et procédures : [`gestion-des-secrets.md`](gestion-des-secrets.md).
+Aucun secret de production n'est présent sur le serveur de CI. Aucun secret n'est présent dans le dépôt, les images ou les logs (scan gitleaks : `no leaks found`). Inventaire et procédures : [`gestion-des-secrets.md`](gestion-des-secrets.md).
 
-## 6. Choix techniques
+## 7. Choix techniques
 
 | Choix | Justification |
 |---|---|
-| Image construite **une fois** (Jenkins), déployée telle quelle (GitLab) | Ce qui est testé et scanné est exactement ce qui tourne en production |
+| **CI et production sur deux VPS distincts**, reliés uniquement par Docker Hub | Moindre privilège, isolation des ressources, indépendance des deux environnements (voir §1) |
+| Image construite **une fois** (VPS 2), déployée telle quelle (VPS 1) | Ce qui est testé et scanné est exactement ce qui tourne en production |
 | CI (Jenkins) et CD (GitLab) séparées, dépôt de déploiement dédié | Responsabilités distinctes ; le déploiement ne dépend que d'un tag publié (orchestration multi-dépôts vue en cours) |
+| Webhook GitHub → Jenkins (HTTPS) | Build déclenché dès le push, sans scrutation périodique |
 | Tag `<version>-<sha7>`, jamais `latest` | Traçabilité et rollback déterministe |
-| VPS plutôt que VM VMware locale | Joignable par les runners GitLab.com ; exposition réelle (DNS, TLS) |
-| Terraform limité au DNS | L'hébergeur du VPS n'a pas de provider ; la zone DNS (Hostinger) en a un officiel |
+| Lab d'abord construit en local, puis **migré tel quel** sur le VPS 2 (volumes Docker) | Configuration validée avant exposition ; job, credentials, projet SonarQube et Quality Gate conservés |
+| Terraform limité au DNS | L'hébergeur des VPS n'a pas de provider ; la zone DNS (Hostinger) en a un officiel |
+| Ansible idempotent et non destructif, tâches Docker communes aux deux serveurs | Même socle sur les deux VPS ; serveur de production partagé : aucune mise à jour complète ni redémarrage de Docker ; simulation `--check` avant application |
+| Limites mémoire des conteneurs de CI | Un dépassement arrête le conteneur fautif sans priver le serveur de mémoire |
 | Migrations dans un conteneur ponctuel `migrate` | `prisma migrate deploy` est exécuté avant l'API, qui ne démarre que s'il réussit |
 | Sauvegarde `pg_dump` avant chaque déploiement | Permet de revenir en arrière même après une migration |
-| Ansible idempotent et non destructif | Serveur partagé : aucune mise à jour complète ni redémarrage de Docker ; simulation `--check` avant application |

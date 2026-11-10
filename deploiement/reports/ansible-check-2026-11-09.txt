@@ -75,7 +75,7 @@ changed: [vps-tanguy]
 TASK [Valider la configuration complète de Caddy] ******************************
 skipping: [vps-tanguy]
 
-TASK [Recharger Caddy à chaud (sans coupure des autres sites)] *****************
+TASK [Recharger Caddy à chaud (sans coupure des autres services)] *****************
 skipping: [vps-tanguy]
 
 TASK [Vérifier que l'utilisateur de déploiement peut piloter Docker] ***********

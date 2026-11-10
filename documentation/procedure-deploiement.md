@@ -152,3 +152,26 @@ echo "$(date -Is) <ANCIEN> -> <TAG> OK (manuel)" >> deploy-history.log
 | `migrate` en échec | Migration incompatible avec la base | Retour automatique au tag précédent ; analyser `docker compose logs migrate` |
 | HTTP 502 sur `api.tanguydavid.fr` | Conteneur `api` arrêté ou non *healthy* | `docker compose ps`, puis `docker compose logs api` |
 | Pipeline en `error` sans étape | Compte GitLab non vérifié, ou erreur de syntaxe | Lire le message du badge `error` ; *Build → Pipeline editor → Validate* |
+
+## 7. Serveur d'intégration continue (VPS 2)
+
+Le serveur de CI est séparé de la production (voir [`architecture.md`](architecture.md) §1). Pour le recréer :
+
+```bash
+# 1. DNS jenkins / sonar → VPS 2 (deploiement/terraform/)
+terraform plan -out=tfplan && terraform apply tfplan
+
+# 2. Préparation : Docker, pare-feu, fichiers du lab (deploiement/ansible/)
+ansible-playbook playbook-ci.yml --check --diff
+ansible-playbook playbook-ci.yml --diff
+
+# 3. Docker Hub authentifié sur le serveur (token en lecture seule)
+ssh -t root@185.216.25.110 'read -rsp "Token : " T && echo && echo "$T" | docker login -u iamkrugs --password-stdin; unset T'
+
+# 4. Démarrage
+ansible-playbook playbook-ci.yml --tags start
+```
+
+Ensuite :
+- configurer Jenkins (*Jenkins URL* = `https://jenkins.tanguydavid.fr/`, credentials `sonar-token` et `dockerhub`, serveur SonarQube, scanner, job), **ou** restaurer les volumes d'une installation existante ;
+- créer le webhook GitHub (*Settings → Webhooks*) vers `https://jenkins.tanguydavid.fr/github-webhook/`.

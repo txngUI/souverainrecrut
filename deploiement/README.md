@@ -25,14 +25,14 @@ L'image déployée est celle publiée par Jenkins sur Docker Hub (`iamkrugs/souv
 | Représentativité d'une production | Faible | Réelle : exposition Internet, DNS, TLS |
 | Point de restauration (§4.1) | Snapshot VMware | Instantanés non inclus dans l'offre : sauvegarde ciblée + modifications uniquement additives + Ansible en mode `--check` (voir §1.1) |
 
-**Contrainte :** le serveur héberge déjà d'autres services (sites web derrière Caddy, serveur Minecraft, tous en conteneurs Docker). Le déploiement est conçu pour **ne rien modifier de l'existant** :
+**Contrainte :** le serveur héberge déjà d'autres services, sans lien avec ce projet (dont un reverse proxy Caddy). Le déploiement est conçu pour **ne rien modifier de l'existant** :
 
 | Existant | Mesure |
 |---|---|
 | Reverse proxy Caddy (ports 80/443) | Ajout d'un fichier dédié `/root/caddy/sites/souverainrecrut.caddy` (le `Caddyfile` importe `sites/*.caddy`) ; rechargement à chaud, sans coupure |
-| Autres conteneurs (Minecraft, sites) | Projet Compose isolé dans `/opt/souverainrecrut` ; le service Docker n'est jamais redémarré |
+| Autres services du serveur | Projet Compose isolé dans `/opt/souverainrecrut` ; le service Docker n'est jamais redémarré |
 | Ports publics | L'API et PostgreSQL n'exposent **aucun** port : l'API est jointe par Caddy via le réseau Docker `web` |
-| Accès SSH | Ajout d'un utilisateur dédié `souverainrecrut` (un compte `deploy` existe déjà pour un autre projet et n'est pas modifié) ; configuration `sshd` et compte root inchangés |
+| Accès SSH | Ajout d'un utilisateur dédié `souverainrecrut` ; comptes existants non modifiés ; configuration `sshd` et compte root inchangés |
 | DNS de la zone | Terraform n'ajoute que ses propres enregistrements (`overwrite = false`) |
 
 ### 1.1 Point de restauration sans snapshot
@@ -100,7 +100,7 @@ dig +short api.tanguydavid.fr AAAA
 | Clé personnelle de l'administrateur (`~/.ssh/id_ed25519`) | Ansible, depuis le poste d'administration | `root` | Administration ; ajoutée à `authorized_keys` par `ssh-copy-id`, le mot de passe root reste inchangé |
 | Clé de déploiement (`~/.ssh/souverainrecrut_deploy`, ed25519, sans passphrase) | GitLab CI | `souverainrecrut` | Groupe `docker`, **sans sudo**, mot de passe verrouillé |
 
-Un compte `deploy` existait déjà sur le serveur, utilisé par un autre projet (GitHub Actions). Un **compte dédié** a été préféré, pour que la révocation et la traçabilité dans les journaux SSH soient indépendantes par projet.
+Un **compte dédié** au projet est utilisé : il peut être révoqué indépendamment des autres comptes du serveur, et ses connexions sont traçables séparément dans les journaux SSH.
 
 > Le groupe `docker` donne un contrôle équivalent à root sur les conteneurs. C'est le compromis habituel pour un déploiement par Docker Compose. Il est limité ici par une clé dédiée, sans sudo, utilisée uniquement par la pipeline.
 
@@ -213,3 +213,20 @@ Les secrets applicatifs (`JWT_SECRET`, `POSTGRES_PASSWORD`) **ne sont pas** dans
 | Champ du tag absent du formulaire | Les variables saisies au lancement sont désactivées par défaut sur les projets récents | Tag passé en **input** de pipeline (`spec:inputs`) |
 | `Load key …: error in libcrypto` | Clé collée dans la variable sans saut de ligne final et/ou avec des fins de ligne Windows | La pipeline normalise la clé et vérifie sa lisibilité (`ssh-keygen -y`) avant de se connecter |
 | Clé privée visible dans une capture | Valeur de variable révélée pendant le diagnostic | **Rotation** de la clé (voir `documentation/gestion-des-secrets.md` §4.1) ; `authorized_keys` géré en mode exclusif par Ansible |
+
+## 7. Serveur d'intégration continue (VPS 2)
+
+Jenkins et SonarQube tournent sur un **second VPS, dédié à la CI** (`185.216.25.110`, Ubuntu 24.04), distinct du serveur de production. C'est la bonne pratique de séparation des environnements :
+- la CI n'a **aucun accès** à la production ;
+- les builds ne consomment pas les ressources de l'API ;
+- chaque serveur peut évoluer indépendamment de l'autre.
+
+**Interaction entre les deux VPS, sans lien direct :** VPS 2 → `docker push` → Docker Hub → `docker pull` ← VPS 1 (commandé par GitLab).
+
+| Brique | Fichiers | Résultat |
+|---|---|---|
+| Terraform | `terraform/` : ressources `ci_ipv4` et `ci_ipv6` (`for_each` sur `jenkins`, `sonar`) | `4 to add, 0 to change, 0 to destroy` |
+| Ansible | `ansible/inventory.ini` (groupe `[ci]`), `ansible/playbook-ci.yml`, `ansible/group_vars/ci.yml`, `ansible/templates/ci-Caddyfile.j2`, `ansible/tasks/docker.yml` (commun avec la production) | Simulation : `failed=0` ([rapport](reports/ansible-ci-check-2026-11-10.txt)) ; serveur préparé ; lab démarré par `--tags start` |
+| Lab | `../integration-continue/lab/docker-compose.yml` + `docker-compose.vps.yml` | Jenkins et SonarQube en HTTPS, limites mémoire, pare-feu 22/80/443 |
+
+> Le serveur venant d'être réinstallé, aucune sauvegarde préalable n'était nécessaire. Son empreinte SSH, modifiée par la réinstallation, a été mise à jour dans `known_hosts` après confirmation.
